@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { PALETTE } from '../config';
+import { ENEMIES } from '../enemies';
 
 /**
  * Generates every texture in code. There is no art: only the few shapes the
@@ -19,10 +20,15 @@ export class BootScene extends Phaser.Scene {
     g.generateTexture('player', 36, 36);
     g.clear();
 
-    // Enemy body: horizontal ellipse.
-    g.fillStyle(PALETTE.enemy).fillEllipse(24, 15, 48, 30);
-    g.generateTexture('enemy', 48, 30);
-    g.clear();
+    // Enemy bodies: ellipses, or rounded rectangles when a corner radius is given.
+    for (const def of Object.values(ENEMIES)) {
+      const { width: w, height: h, radius } = def.body;
+      g.fillStyle(PALETTE.enemy);
+      if (radius === undefined) g.fillEllipse(w / 2, h / 2, w, h);
+      else g.fillRoundedRect(0, 0, w, h, radius);
+      g.generateTexture(`enemy-${def.id}`, w, h);
+      g.clear();
+    }
 
     // Effect shapes: one circle = one point of health, one square = one point kept out of it.
     g.fillStyle(PALETTE.shape).fillCircle(5, 5, 5);

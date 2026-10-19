@@ -71,20 +71,27 @@ export class UIScene extends Phaser.Scene {
 
   /**
    * Lost circles break off the row: each pops up a little, then drops and fades,
-   * the last one first. A new run brings them all back.
+   * the last one first. Regained circles (and a new run) grow back into place.
    */
   private setHp(hp: number): void {
     let order = 0;
     for (let i = this.hpCircles.length - 1; i >= 0; i--) {
       const c = this.hpCircles[i];
       if (i < hp) {
-        c.setVisible(true);
+        if (!c.visible || i >= this.shownHp) this.popIn(c);
       } else if (i < this.shownHp) {
         c.setVisible(false);
         this.dropCircle(c.x, c.y, order++ * 70);
       }
     }
     this.shownHp = hp;
+  }
+
+  /** A regained circle grows back into its place in the row. */
+  private popIn(c: Phaser.GameObjects.Arc): void {
+    this.tweens.killTweensOf(c);
+    c.setVisible(true).setScale(0);
+    this.tweens.add({ targets: c, scale: 1, duration: 220, ease: 'Back.easeOut' });
   }
 
   private dropCircle(x: number, y: number, delay: number): void {

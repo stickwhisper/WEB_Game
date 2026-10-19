@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { PALETTE, TUNING } from '../config';
 import { input } from '../input/InputState';
 import type { GameScene } from '../scenes/GameScene';
-import { type Move, type Pose, type WeaponDef, WEAPONS, poseAt, triangleAt } from '../weapons';
+import { type Move, type Pose, type WeaponDef, WEAPONS, midTriangle, poseAt, triangleAt } from '../weapons';
 import type { Enemy } from './Enemy';
 
 const P = TUNING.player;
@@ -105,6 +105,19 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         this.body.setVelocityX(this.body.velocity.x * 0.9);
         break;
     }
+  }
+
+  /** Take back `amount` circles of health, up to the maximum. Returns how many were actually taken. */
+  heal(amount: number): number {
+    if (this.mode === 'dead') return 0;
+    const taken = Math.min(amount, P.maxHp - this.hp);
+    this.hp += taken;
+    if (taken > 0) this.scene.onPlayerHealed(this.hp);
+    return taken;
+  }
+
+  get isFullHealth(): boolean {
+    return this.hp >= P.maxHp;
   }
 
   /** Swap weapons; returns the one that was dropped. */
@@ -340,15 +353,4 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.visual.setScale(sx, sy);
     this.scene.tweens.add({ targets: this.visual, scaleX: 1, scaleY: 1, duration: 140, ease: 'Quad.easeOut' });
   }
-}
-
-function midTriangle(a: Phaser.Geom.Triangle, b: Phaser.Geom.Triangle): Phaser.Geom.Triangle {
-  return new Phaser.Geom.Triangle(
-    (a.x1 + b.x1) / 2,
-    (a.y1 + b.y1) / 2,
-    (a.x2 + b.x2) / 2,
-    (a.y2 + b.y2) / 2,
-    (a.x3 + b.x3) / 2,
-    (a.y3 + b.y3) / 2,
-  );
 }

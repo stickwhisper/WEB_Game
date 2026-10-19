@@ -139,3 +139,15 @@ export function triangleAt(shape: TriangleShape, pose: Pose, pivotX: number, piv
   const [x3, y3] = pt(b, hw);
   return new Phaser.Geom.Triangle(x1, y1, x2, y2, x3, y3);
 }
+
+/** Halfway between two triangles: tested between frames so a fast attack can't skip over a target. */
+export function midTriangle(a: Phaser.Geom.Triangle, b: Phaser.Geom.Triangle): Phaser.Geom.Triangle {
+  return new Phaser.Geom.Triangle(
+    (a.x1 + b.x1) / 2,
+    (a.y1 + b.y1) / 2,
+    (a.x2 + b.x2) / 2,
+    (a.y2 + b.y2) / 2,
+    (a.x3 + b.x3) / 2,
+    (a.y3 + b.y3) / 2,
+  );
+}

@@ -5,6 +5,7 @@ import { input } from '../input/InputState';
 import { LEVEL_1, Level } from '../level';
 import { Enemy } from '../objects/Enemy';
 import { Player } from '../objects/Player';
+import { HealthDrop } from '../objects/HealthDrop';
 import { WeaponPickup } from '../objects/WeaponPickup';
 import type { Move } from '../weapons';
 
@@ -22,6 +23,7 @@ export class GameScene extends Phaser.Scene {
   effects!: Effects;
   private enemies: Enemy[] = [];
   private pickups: WeaponPickup[] = [];
+  private drops: HealthDrop[] = [];
   private exits: Phaser.GameObjects.Graphics[] = [];
   private hitstopTimer?: Phaser.Time.TimerEvent;
   private ending = false;
@@ -34,6 +36,7 @@ export class GameScene extends Phaser.Scene {
   create(): void {
     this.enemies = [];
     this.pickups = [];
+    this.drops = [];
     this.exits = [];
     this.ending = false;
     this.nearPickup = undefined;
@@ -52,7 +55,7 @@ export class GameScene extends Phaser.Scene {
     for (const w of this.level.weapons) this.pickups.push(new WeaponPickup(this, w.x, w.y, w.weapon));
 
     this.player = new Player(this, this.level.playerSpawn.x, this.level.playerSpawn.y);
-    for (const s of this.level.enemySpawns) this.enemies.push(new Enemy(this, s.x, s.y));
+    for (const s of this.level.enemySpawns) this.enemies.push(new Enemy(this, s.x, s.y, s.enemy));
 
     const bodies = [this.player, ...this.enemies];
     this.physics.add.collider(bodies, this.level.solids);
@@ -76,6 +79,7 @@ export class GameScene extends Phaser.Scene {
     this.player.update(time, dt);
     for (const e of this.enemies) if (e.active) e.update(time, dt, this.player);
     this.updatePickups();
+    this.updateDrops();
 
     if (this.ending) return;
     if (this.player.y > this.level.heightPx + 100) this.player.receiveAttack(TUNING.player.maxHp, this.player.x);
@@ -112,8 +116,18 @@ export class GameScene extends Phaser.Scene {
     this.hitStop(80);
   }
 
-  onEnemyKilled(_enemy: Enemy): void {
+  /** A dead enemy leaves its circles on the ground, fanned out around where it fell. */
+  onEnemyKilled(enemy: Enemy): void {
     this.cameras.main.shake(120, 0.006);
+    const n = enemy.def.drops;
+    for (let i = 0; i < n; i++) {
+      const spread = (i - (n - 1) / 2) * 22 + Phaser.Math.Between(-6, 6);
+      this.drops.push(new HealthDrop(this, this.level, enemy.x, enemy.centerY, spread));
+    }
+  }
+
+  onPlayerHealed(hp: number): void {
+    this.game.events.emit(GameEvents.HP, hp);
   }
 
   /** Freeze the physics world for a few ms on impact: the core of "hit feel". */
@@ -124,6 +138,18 @@ export class GameScene extends Phaser.Scene {
   }
 
   // --- Flow ----------------------------------------------------------------
+
+  /** Circles on the ground are taken back one by one, but only while health isn't full. */
+  private updateDrops(): void {
+    const reach = TUNING.healthDrop.reach;
+    for (const d of this.drops) {
+      d.update();
+      if (!d.landed || d.taken || this.player.isFullHealth) continue;
+      if (Phaser.Math.Distance.Between(d.x, d.y, this.player.x, this.player.centerY) > reach) continue;
+      if (this.player.heal(1) > 0) d.absorb({ x: this.player.x, y: this.player.centerY });
+    }
+    this.drops = this.drops.filter((d) => !d.taken);
+  }
 
   /** Standing on a weapon offers it; the pick input (target button / E) swaps it with the one in hand. */
   private updatePickups(): void {

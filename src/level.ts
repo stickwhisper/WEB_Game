@@ -1,15 +1,18 @@
 import Phaser from 'phaser';
 import { PALETTE, TILE } from './config';
+import { ENEMIES, type EnemyDef } from './enemies';
 import { WEAPONS, type WeaponDef } from './weapons';
 
 const WEAPON_MARKERS: Record<string, WeaponDef> = { s: WEAPONS.spear, d: WEAPONS.dagger, h: WEAPONS.hammer, w: WEAPONS.sword };
+const ENEMY_MARKERS: Record<string, EnemyDef> = { E: ENEMIES.grunt, H: ENEMIES.hopper, W: ENEMIES.warden, B: ENEMIES.brute };
 
 /**
  * Level legend:
  *   #  solid tile
  *   =  one-way platform (jump up through it, land on top)
  *   P  player spawn
- *   E  enemy spawn
+ *   E  grunt (wide ellipse)     H  hopper (tall ellipse)
+ *   W  warden (rounded square)  B  brute (large flat ellipse)   (see enemies.ts)
  *   D  exit square (bottom tile)
  *   s  spear, d  dagger, h  hammer, w  sword (weapon lying on the ground)
  *   .  empty
@@ -24,14 +27,14 @@ export const LEVEL_1 = [
   '#..............................................................................................#',
   '#..............................................................................................#',
   '#..............................................................................................#',
-  '#............................................E...........................E.....................#',
+  '#............................................H...........................H.....................#',
   '#..........................................=====.......................=====...................#',
   '#..............................................................................................#',
   '#..............................................................................................#',
-  '#.......=====................E......======..........###.......=====.............=====..........#',
+  '#.......=====................H......======..........###.......=====.............=====..........#',
   '#.........................#######...................###...................................D....#',
   '#.........................#######...................#######.............................########',
-  '#..P..s..d..h...E..........#######..........E.......#######.....E.....E.......E.........########',
+  '#..P..s..d..h...E..........#######..........W.......#######.....E.....B.......W.........########',
   '##################....##########################################################################',
   '##################....##########################################################################',
   '################################################################################################',
@@ -50,7 +53,7 @@ export class Level {
   readonly solids: Phaser.Physics.Arcade.StaticGroup;
   readonly oneWays: Phaser.Physics.Arcade.StaticGroup;
   readonly playerSpawn: Spawn = { x: TILE * 2, y: TILE * 2 };
-  readonly enemySpawns: Spawn[] = [];
+  readonly enemySpawns: (Spawn & { enemy: EnemyDef })[] = [];
   readonly exits: Spawn[] = [];
   readonly weapons: (Spawn & { weapon: WeaponDef })[] = [];
 
@@ -86,7 +89,7 @@ export class Level {
         // Spawns are anchored to the bottom-center of their tile.
         const spawn = { x: c * TILE + TILE / 2, y: (r + 1) * TILE };
         if (ch === 'P') Object.assign(this.playerSpawn, spawn);
-        else if (ch === 'E') this.enemySpawns.push(spawn);
+        else if (ENEMY_MARKERS[ch]) this.enemySpawns.push({ ...spawn, enemy: ENEMY_MARKERS[ch] });
         else if (ch === 'D') this.exits.push(spawn);
         else if (WEAPON_MARKERS[ch]) this.weapons.push({ ...spawn, weapon: WEAPON_MARKERS[ch] });
       }

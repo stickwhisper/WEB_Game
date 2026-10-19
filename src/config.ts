@@ -58,20 +58,18 @@ export const TUNING = {
     invulnMs: 900,
   },
 
+  /** Shared by every enemy; per-type values (form, health, attack) live in enemies.ts. */
   enemy: {
-    maxHp: 6,
-    patrolSpeed: 60,
-    chaseSpeed: 120,
     aggroRangeX: 280,
     aggroRangeY: 90,
-    lungeRange: 90,
-    windupMs: 500,
-    lungeSpeed: 420,
-    lungeMs: 220,
-    recoverMs: 550,
     stunMs: 280,
     staggerMs: 900,
-    damage: 2,
+  },
+
+  /** Circles an enemy leaves behind when it dies. */
+  healthDrop: {
+    /** Absorbed when the player's centre comes this close (only while health isn't full). */
+    reach: 30,
   },
 };
 
