@@ -1,0 +1,9 @@
+{
+  "name": "Roguelite Prototype",
+  "short_name": "Roguelite",
+  "start_url": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#0e0e16",
+  "theme_color": "#0e0e16"
+}
