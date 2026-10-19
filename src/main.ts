@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { TUNING, VIEW_HEIGHT } from './config';
+import { PALETTE, TUNING, VIEW_HEIGHT } from './config';
 import { BootScene } from './scenes/BootScene';
 import { GameScene } from './scenes/GameScene';
 import { UIScene } from './scenes/UIScene';
@@ -19,7 +19,7 @@ const debug = new URLSearchParams(location.search).has('debug');
 const game = new Phaser.Game({
   type: Phaser.AUTO,
   parent: 'game',
-  backgroundColor: '#0e0e16',
+  backgroundColor: PALETTE.background,
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,

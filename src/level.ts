@@ -1,5 +1,8 @@
 import Phaser from 'phaser';
-import { TILE } from './config';
+import { PALETTE, TILE } from './config';
+import { WEAPONS, type WeaponDef } from './weapons';
+
+const WEAPON_MARKERS: Record<string, WeaponDef> = { s: WEAPONS.spear, d: WEAPONS.dagger, h: WEAPONS.hammer, w: WEAPONS.sword };
 
 /**
  * Level legend:
@@ -7,7 +10,8 @@ import { TILE } from './config';
  *   =  one-way platform (jump up through it, land on top)
  *   P  player spawn
  *   E  enemy spawn
- *   D  exit door (bottom tile)
+ *   D  exit square (bottom tile)
+ *   s  spear, d  dagger, h  hammer, w  sword (weapon lying on the ground)
  *   .  empty
  */
 export const LEVEL_1 = [
@@ -27,7 +31,7 @@ export const LEVEL_1 = [
   '#.......=====................E......======..........###.......=====.............=====..........#',
   '#.........................#######...................###...................................D....#',
   '#.........................#######...................#######.............................########',
-  '#..P...........E..........#######...........E.......#######.....E.....E.......E.........########',
+  '#..P..s..d..h...E..........#######..........E.......#######.....E.....E.......E.........########',
   '##################....##########################################################################',
   '##################....##########################################################################',
   '################################################################################################',
@@ -47,7 +51,8 @@ export class Level {
   readonly oneWays: Phaser.Physics.Arcade.StaticGroup;
   readonly playerSpawn: Spawn = { x: TILE * 2, y: TILE * 2 };
   readonly enemySpawns: Spawn[] = [];
-  readonly doors: Spawn[] = [];
+  readonly exits: Spawn[] = [];
+  readonly weapons: (Spawn & { weapon: WeaponDef })[] = [];
 
   private readonly grid: string[];
 
@@ -74,11 +79,6 @@ export class Level {
     return ch === '#' || ch === '=';
   }
 
-  private tileAt(c: number, r: number): string {
-    if (r < 0 || r >= this.rows || c < 0 || c >= this.cols) return '#';
-    return this.grid[r][c];
-  }
-
   private readMarkers(): void {
     for (let r = 0; r < this.rows; r++) {
       for (let c = 0; c < this.cols; c++) {
@@ -87,7 +87,8 @@ export class Level {
         const spawn = { x: c * TILE + TILE / 2, y: (r + 1) * TILE };
         if (ch === 'P') Object.assign(this.playerSpawn, spawn);
         else if (ch === 'E') this.enemySpawns.push(spawn);
-        else if (ch === 'D') this.doors.push(spawn);
+        else if (ch === 'D') this.exits.push(spawn);
+        else if (WEAPON_MARKERS[ch]) this.weapons.push({ ...spawn, weapon: WEAPON_MARKERS[ch] });
       }
     }
   }
@@ -119,27 +120,16 @@ export class Level {
     }
   }
 
+  /** Flat masses and thin lines: no texture, no tile grid, nothing that reads as a square. */
   private draw(scene: Phaser.Scene): void {
     const g = scene.add.graphics().setDepth(-1);
     for (let r = 0; r < this.rows; r++) {
       for (let c = 0; c < this.cols; c++) {
         const ch = this.grid[r][c];
-        const x = c * TILE;
-        const y = r * TILE;
         if (ch === '#') {
-          g.fillStyle((r + c) % 2 === 0 ? 0x2b2b40 : 0x29293d);
-          g.fillRect(x, y, TILE, TILE);
-          const above = this.tileAt(c, r - 1);
-          if (above !== '#') {
-            g.fillStyle(0x5a8f6a);
-            g.fillRect(x, y, TILE, 5);
-          }
+          g.fillStyle(PALETTE.terrain).fillRect(c * TILE, r * TILE, TILE, TILE);
         } else if (ch === '=') {
-          g.fillStyle(0x8a6a4a);
-          g.fillRect(x, y, TILE, 8);
-          g.fillStyle(0x5a4530);
-          g.fillRect(x + 4, y + 8, 4, 6);
-          g.fillRect(x + TILE - 8, y + 8, 4, 6);
+          g.fillStyle(PALETTE.platform).fillRect(c * TILE, r * TILE, TILE, 3);
         }
       }
     }

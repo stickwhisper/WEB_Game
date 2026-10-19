@@ -1,25 +1,28 @@
 import Phaser from 'phaser';
-import { TUNING } from '../config';
+import { PALETTE, TUNING } from '../config';
 import { type Action, input } from './InputState';
 
 interface Button {
   action: Action;
-  label: string;
   x: number;
   y: number;
-  r: number;
-  color: number;
+  /** Icon size; the touch area is TUNING.input.buttonHitRadius regardless. */
+  size: number;
   pointerId: number | null;
   gfx: Phaser.GameObjects.Graphics;
-  text: Phaser.GameObjects.Text;
 }
 
 const I = TUNING.input;
 
 /**
- * Button-style touch layout:
- *   left half  - floating joystick (appears wherever the thumb lands)
- *   right side - attack / jump / roll buttons in a thumb arc
+ * Touch layout with no text and no backgrounds: each button is only its symbol.
+ * Symbols are drawn as outlines (filled only while pressed) so they never read
+ * as the filled shapes that live in the world.
+ *   triangle         attack
+ *   square           guard
+ *   three | | |      jump   (vertical lines)
+ *   three = lines    roll   (horizontal lines)
+ * The left half of the screen is a floating stick drawn as a horizontal line.
  *
  * Every finger is tracked by pointer id, so moving, jumping and attacking
  * at the same time works. Mouse clicks drive the same code when the controls are shown.
@@ -39,9 +42,9 @@ export class TouchControls {
     scene.input.addPointer(3); // 4 simultaneous touches in total
 
     this.joyGfx = scene.add.graphics().setDepth(100);
-    this.addButton('attack', '공격', 0xd9534f);
-    this.addButton('jump', '점프', 0x3d7bd9);
-    this.addButton('roll', '구르기', 0x4caf7a);
+    for (const action of ['attack', 'guard', 'jump', 'roll'] as Action[]) {
+      this.buttons.push({ action, x: 0, y: 0, size: 0, pointerId: null, gfx: scene.add.graphics().setDepth(100) });
+    }
     this.layout();
 
     scene.input.on(Phaser.Input.Events.POINTER_DOWN, this.onDown, this);
@@ -63,37 +66,25 @@ export class TouchControls {
     if (!enabled) this.releaseAll();
     this.enabled = enabled;
     this.joyGfx.setVisible(enabled);
-    for (const b of this.buttons) {
-      b.gfx.setVisible(enabled);
-      b.text.setVisible(enabled);
-    }
+    for (const b of this.buttons) b.gfx.setVisible(enabled);
   }
 
-  private addButton(action: Action, label: string, color: number): void {
-    const gfx = this.scene.add.graphics().setDepth(100);
-    const text = this.scene.add
-      .text(0, 0, label, { fontFamily: 'system-ui, sans-serif', fontSize: '18px', fontStyle: 'bold', color: '#ffffff' })
-      .setOrigin(0.5)
-      .setDepth(101)
-      .setAlpha(0.85);
-    this.buttons.push({ action, label, x: 0, y: 0, r: 0, color, pointerId: null, gfx, text });
-  }
-
-  /** Positions are anchored to the bottom-right corner so they stay under the thumb on any aspect ratio. */
+  /** Thumb arc anchored to the bottom-right corner, so it fits any aspect ratio. */
   private layout(): void {
     const w = this.scene.scale.width;
     const h = this.scene.scale.height;
     const place: Record<Action, [number, number, number]> = {
-      attack: [w - 110, h - 115, 62],
-      jump: [w - 250, h - 75, 50],
-      roll: [w - 85, h - 260, 46],
+      attack: [w - 110, h - 110, 46],
+      guard: [w - 235, h - 175, 34],
+      jump: [w - 250, h - 62, 34],
+      roll: [w - 95, h - 250, 34],
     };
     for (const b of this.buttons) {
-      [b.x, b.y, b.r] = place[b.action];
-      b.text.setPosition(b.x, b.y);
+      [b.x, b.y, b.size] = place[b.action];
+      b.gfx.setPosition(b.x, b.y);
       this.drawButton(b);
     }
-    this.joyHome.set(150, h - 130);
+    this.joyHome.set(150, h - 110);
     if (this.joyPointer === null) {
       this.joyBase.copy(this.joyHome);
       this.joyKnob.copy(this.joyHome);
@@ -168,6 +159,7 @@ export class TouchControls {
       this.joyBase.add(excess);
       d.setLength(R);
     }
+    this.joyKnob.copy(this.joyBase).add(d);
     const nx = d.x / R;
     const mag = Math.abs(nx);
     // Past the dead zone, ramp to full speed by 60% travel: platformers want near-digital response.
@@ -181,7 +173,7 @@ export class TouchControls {
     let bestDist = Infinity;
     for (const b of this.buttons) {
       const dist = Phaser.Math.Distance.Between(x, y, b.x, b.y);
-      if (dist <= b.r * I.buttonHitScale && dist < bestDist) {
+      if (dist <= I.buttonHitRadius && dist < bestDist) {
         best = b;
         bestDist = dist;
       }
@@ -192,27 +184,43 @@ export class TouchControls {
   private drawButton(b: Button): void {
     const pressed = b.pointerId !== null;
     const g = b.gfx.clear();
-    g.fillStyle(b.color, pressed ? 0.75 : 0.35);
-    g.fillCircle(b.x, b.y, pressed ? b.r * 0.94 : b.r);
-    g.lineStyle(3, 0xffffff, pressed ? 0.9 : 0.45);
-    g.strokeCircle(b.x, b.y, pressed ? b.r * 0.94 : b.r);
-    b.text.setScale(pressed ? 0.94 : 1);
+    const s = b.size * (pressed ? 0.88 : 1);
+    const alpha = pressed ? 0.95 : 0.4;
+    const half = s / 2;
+    g.lineStyle(3, PALETTE.shape, alpha);
+    g.fillStyle(PALETTE.shape, alpha);
+    switch (b.action) {
+      case 'attack':
+        if (pressed) g.fillTriangle(-half, half * 0.8, half, half * 0.8, 0, -half);
+        else g.strokeTriangle(-half, half * 0.8, half, half * 0.8, 0, -half);
+        break;
+      case 'guard':
+        if (pressed) g.fillRect(-half * 0.8, -half * 0.8, s * 0.8, s * 0.8);
+        else g.strokeRect(-half * 0.8, -half * 0.8, s * 0.8, s * 0.8);
+        break;
+      case 'jump':
+      case 'roll': {
+        g.lineStyle(4, PALETTE.shape, alpha);
+        for (const o of [-half * 0.6, 0, half * 0.6]) {
+          if (b.action === 'jump') g.lineBetween(o, -half, o, half);
+          else g.lineBetween(-half, o, half, o);
+        }
+        break;
+      }
+    }
   }
 
+  /**
+   * While a thumb is down: a horizontal line (the travel) and a short vertical tick (the thumb).
+   * Nothing is drawn at rest, since an idle line would read as a platform in the world.
+   */
   private drawJoystick(): void {
-    const active = this.joyPointer !== null;
+    const R = I.joystickRadius;
     const g = this.joyGfx.clear();
-    if (!active) {
-      // Idle: just a faint ring as a hint, so it doesn't hide the player near the left edge.
-      g.lineStyle(2, 0xffffff, 0.15);
-      g.strokeCircle(this.joyBase.x, this.joyBase.y, I.joystickRadius);
-      return;
-    }
-    g.fillStyle(0xffffff, 0.12);
-    g.fillCircle(this.joyBase.x, this.joyBase.y, I.joystickRadius);
-    g.lineStyle(3, 0xffffff, 0.4);
-    g.strokeCircle(this.joyBase.x, this.joyBase.y, I.joystickRadius);
-    g.fillStyle(0xffffff, 0.55);
-    g.fillCircle(this.joyKnob.x, this.joyKnob.y, 30);
+    if (this.joyPointer === null) return;
+    g.lineStyle(2, PALETTE.shape, 0.4);
+    g.lineBetween(this.joyBase.x - R, this.joyBase.y, this.joyBase.x + R, this.joyBase.y);
+    g.lineStyle(4, PALETTE.shape, 0.8);
+    g.lineBetween(this.joyKnob.x, this.joyBase.y - 18, this.joyKnob.x, this.joyBase.y + 18);
   }
 }

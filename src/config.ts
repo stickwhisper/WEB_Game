@@ -3,6 +3,21 @@
 export const TILE = 32;
 export const VIEW_HEIGHT = 540;
 
+/**
+ * Monochrome only. Colour must not carry meaning; shapes do:
+ *   triangle = attack, circle = health, square = outside the health system (guard, exit).
+ * Player and enemies are told apart by form and value, never by hue.
+ */
+export const PALETTE = {
+  background: 0x0f0f0f,
+  terrain: 0x262626,
+  platform: 0x4a4a4a,
+  player: 0xf2f2f2,
+  enemy: 0x9a9a9a,
+  shape: 0xf2f2f2, // triangles, circles, squares
+  dim: 0x5a5a5a,
+};
+
 export const TUNING = {
   gravity: 1800,
   maxFallSpeed: 900,
@@ -13,12 +28,13 @@ export const TUNING = {
     /** Joystick travel (px) for full speed, and the dead zone as a fraction of it. */
     joystickRadius: 70,
     joystickDeadZone: 0.25,
-    /** Touch area is this much larger than the drawn button. */
-    buttonHitScale: 1.35,
+    /** Invisible touch area radius around each button icon. */
+    buttonHitRadius: 62,
   },
 
   player: {
-    maxHp: 100,
+    /** Health is a small integer: it is shown as that many circles, so it must be countable. */
+    maxHp: 10,
     runSpeed: 260,
     groundAccel: 2600,
     groundDecel: 3200,
@@ -33,23 +49,29 @@ export const TUNING = {
     rollMs: 320,
     rollCooldownMs: 120,
 
+    /** A guard stops this much damage per hit; the rest pierces through. */
+    guardPower: 1,
+    /** Raising the guard this soon before a hit blocks all of it and staggers the attacker. */
+    parryWindowMs: 180,
+
     hurtMs: 300,
     invulnMs: 900,
   },
 
   enemy: {
-    maxHp: 30,
+    maxHp: 6,
     patrolSpeed: 60,
     chaseSpeed: 120,
     aggroRangeX: 280,
     aggroRangeY: 90,
     lungeRange: 90,
-    windupMs: 450,
+    windupMs: 500,
     lungeSpeed: 420,
     lungeMs: 220,
     recoverMs: 550,
     stunMs: 280,
-    damage: 15,
+    staggerMs: 900,
+    damage: 2,
   },
 };
 
@@ -62,28 +84,6 @@ export const KEY_BINDINGS = {
   right: ['RIGHT', 'D'],
   jump: ['SPACE', 'UP', 'W', 'Z'],
   attack: ['X', 'J'],
-  roll: ['C', 'K', 'SHIFT'],
+  guard: ['V', 'L', 'SHIFT'],
+  roll: ['C', 'K'],
 };
-
-export interface AttackDef {
-  durationMs: number;
-  /** Hitbox is live between these times (ms since attack start). */
-  activeFromMs: number;
-  activeToMs: number;
-  /** Next combo hit can start once this much of the swing has played. */
-  chainFromMs: number;
-  damage: number;
-  reach: number;
-  height: number;
-  lunge: number;
-  knockback: number;
-  hitstopMs: number;
-  shake: number;
-}
-
-/** Three-hit ground combo. The finisher is slower but hits harder. */
-export const COMBO: AttackDef[] = [
-  { durationMs: 270, activeFromMs: 50, activeToMs: 130, chainFromMs: 140, damage: 10, reach: 58, height: 44, lunge: 140, knockback: 160, hitstopMs: 45, shake: 0.003 },
-  { durationMs: 270, activeFromMs: 50, activeToMs: 130, chainFromMs: 140, damage: 10, reach: 58, height: 44, lunge: 140, knockback: 160, hitstopMs: 45, shake: 0.003 },
-  { durationMs: 420, activeFromMs: 110, activeToMs: 200, chainFromMs: 9999, damage: 22, reach: 74, height: 54, lunge: 260, knockback: 420, hitstopMs: 90, shake: 0.008 },
-];

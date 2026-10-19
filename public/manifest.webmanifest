@@ -1,9 +1,9 @@
 {
-  "name": "Roguelite Prototype",
-  "short_name": "Roguelite",
+  "name": "A.Game",
+  "short_name": "A.Game",
   "start_url": "./",
   "display": "fullscreen",
   "orientation": "landscape",
-  "background_color": "#0e0e16",
-  "theme_color": "#0e0e16"
+  "background_color": "#0f0f0f",
+  "theme_color": "#0f0f0f"
 }

@@ -1,12 +1,21 @@
 import Phaser from 'phaser';
-import { COMBO, TUNING } from '../config';
+import { PALETTE, TUNING } from '../config';
 import { input } from '../input/InputState';
 import type { GameScene } from '../scenes/GameScene';
+import { type Move, type Pose, type WeaponDef, WEAPONS, poseAt, triangleAt } from '../weapons';
 import type { Enemy } from './Enemy';
 
 const P = TUNING.player;
+const RADIUS = 18;
+/** Weapon held loosely when not attacking: a faint triangle pointing down and forward. */
+const REST_POSE: Pose = { angleDeg: 70, dist: -6, alpha: 0.3 };
+const GUARD_SIZE = 22;
+const GUARD_GAP = 24;
 
-type State = 'normal' | 'attack' | 'roll' | 'hurt' | 'dead';
+type State = 'normal' | 'attack' | 'guard' | 'roll' | 'hurt' | 'dead';
+
+/** What happened when an attack reached the player. */
+export type HitResult = 'ignored' | 'parried' | 'blocked' | 'hit';
 
 export class Player extends Phaser.Physics.Arcade.Sprite {
   declare body: Phaser.Physics.Arcade.Body;
@@ -14,11 +23,14 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
   hp: number = P.maxHp;
   facing: 1 | -1 = 1;
+  weapon: WeaponDef = WEAPONS.sword;
   /**
-   * Squash/stretch, flashes and flips go on this image, never on the sprite itself:
+   * Squash/stretch and flashes go on this image, never on the sprite itself:
    * scaling an Arcade sprite also resizes its body and would break collisions.
    */
   readonly visual: Phaser.GameObjects.Image;
+  private readonly weaponGfx: Phaser.GameObjects.Graphics;
+  private readonly guardGfx: Phaser.GameObjects.Graphics;
 
   private mode: State = 'normal';
   private stateMs = 0;
@@ -28,10 +40,10 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   private rollReadyAt = 0;
   private invulnUntil = 0;
 
-  private comboIndex = 0;
+  private moveIndex = 0;
   private attackQueued = false;
-  private slashShown = false;
-  private readonly hitThisSwing = new Set<Enemy>();
+  private readonly hitThisMove = new Set<Enemy>();
+  private lastTri?: Phaser.Geom.Triangle;
 
   constructor(scene: GameScene, x: number, y: number) {
     super(scene, x, y, 'player');
@@ -39,27 +51,31 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     scene.physics.add.existing(this);
     this.setOrigin(0.5, 1);
     this.setVisible(false);
+    this.body.setSize(28, RADIUS * 2);
     this.body.setMaxVelocityY(TUNING.maxFallSpeed);
+
     this.visual = scene.add.image(x, y, 'player').setOrigin(0.5, 1).setDepth(10);
+    this.weaponGfx = scene.add.graphics().setDepth(12);
+    this.guardGfx = scene.add.graphics().setDepth(12);
     scene.events.on(Phaser.Scenes.Events.POST_UPDATE, this.syncVisual, this);
     this.once(Phaser.GameObjects.Events.DESTROY, () => {
       scene.events.off(Phaser.Scenes.Events.POST_UPDATE, this.syncVisual, this);
       this.visual.destroy();
+      this.weaponGfx.destroy();
+      this.guardGfx.destroy();
     });
-  }
-
-  /** Runs after the physics step so the visual never lags a frame behind the body. */
-  private syncVisual(): void {
-    this.visual.setPosition(this.x, this.y);
-    this.visual.setFlipX(this.facing < 0);
   }
 
   get isDead(): boolean {
     return this.mode === 'dead';
   }
 
-  get isInvulnerable(): boolean {
-    return this.mode === 'roll' || this.mode === 'dead' || this.scene.time.now < this.invulnUntil;
+  get isBusy(): boolean {
+    return this.mode !== 'normal';
+  }
+
+  get centerY(): number {
+    return this.y - RADIUS;
   }
 
   update(now: number, dt: number): void {
@@ -76,6 +92,9 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       case 'attack':
         this.updateAttack(now, dt, onGround);
         break;
+      case 'guard':
+        this.updateGuard(now, dt, onGround);
+        break;
       case 'roll':
         this.updateRoll(now);
         break;
@@ -88,19 +107,49 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     }
   }
 
-  takeDamage(amount: number, fromX: number): boolean {
-    if (this.isInvulnerable) return false;
+  /** Swap weapons; returns the one that was dropped. */
+  equip(weapon: WeaponDef): WeaponDef {
+    const old = this.weapon;
+    this.weapon = weapon;
+    return old;
+  }
+
+  /**
+   * An attack of `damage` points arrives from `fromX`.
+   * A guard facing the attacker turns up to `guardPower` points into squares; the rest become circles.
+   */
+  receiveAttack(damage: number, fromX: number): HitResult {
     const now = this.scene.time.now;
-    this.hp = Math.max(0, this.hp - amount);
+    if (this.mode === 'roll' || this.mode === 'dead' || now < this.invulnUntil) return 'ignored';
+
+    const fx = this.scene.effects;
+    const towardAttacker = fromX >= this.x ? 1 : -1;
+    if (this.mode === 'guard' && towardAttacker === this.facing) {
+      // Measured on the guard's own state timer: same clock as enemy wind-ups, even on slow frames.
+      const parried = this.stateMs <= P.parryWindowMs;
+      const blocked = parried ? damage : Math.min(damage, P.guardPower);
+      fx.block(blocked, this.x + this.facing * GUARD_GAP, this.centerY);
+      this.pulseGuard();
+      damage -= blocked;
+      if (damage <= 0) {
+        this.body.setVelocityX(-towardAttacker * (parried ? 80 : 200));
+        this.invulnUntil = now + 200;
+        this.scene.hitStop(parried ? 100 : 50);
+        return parried ? 'parried' : 'blocked';
+      }
+    }
+
+    this.hp = Math.max(0, this.hp - damage);
+    fx.bleed(damage, this.x, this.centerY);
     this.invulnUntil = now + P.invulnMs;
-    const dir = this.x >= fromX ? 1 : -1;
-    this.body.setVelocity(dir * 320, -320);
+    this.body.setVelocity(-towardAttacker * 320, -320);
     this.scene.onPlayerHurt(this.hp);
 
     if (this.hp <= 0) {
       this.enter('dead');
-      this.visual.setTint(0x555555);
-      return true;
+      this.scene.tweens.killTweensOf(this.visual);
+      this.scene.tweens.add({ targets: this.visual, scale: 0, duration: 500, ease: 'Quad.easeIn' });
+      return 'hit';
     }
     this.enter('hurt');
     this.scene.tweens.add({
@@ -111,7 +160,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       repeat: Math.floor(P.invulnMs / 140) - 1,
       onComplete: () => this.visual.setAlpha(1),
     });
-    return true;
+    return 'hit';
   }
 
   private enter(state: State): void {
@@ -122,10 +171,10 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   private updateNormal(now: number, dt: number, onGround: boolean): void {
     this.applyRun(dt, onGround, input.moveX);
 
-    // Priority: roll > attack > jump, so a defensive tap is never eaten by something else.
-    if (input.buffered('roll') && now >= this.rollReadyAt) {
-      input.consume('roll');
-      this.startRoll();
+    // Priority: roll > guard > attack > jump, so a defensive input is never eaten by something else.
+    if (this.tryRoll(now)) return;
+    if (input.isHeld('guard')) {
+      this.enter('guard');
       return;
     }
     if (input.buffered('attack')) {
@@ -161,14 +210,32 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     if (moveX !== 0) this.facing = moveX > 0 ? 1 : -1;
   }
 
+  // --- Guard --------------------------------------------------------------
+
+  private updateGuard(now: number, dt: number, onGround: boolean): void {
+    // Planted: the stick only turns the guard around.
+    this.applyRun(dt, onGround, 0);
+    if (input.moveX !== 0) this.facing = input.moveX > 0 ? 1 : -1;
+    if (this.tryRoll(now)) return;
+    if (!input.isHeld('guard')) this.enter('normal');
+  }
+
+  private pulseGuard(): void {
+    this.guardGfx.setScale(1.4);
+    this.scene.tweens.add({ targets: this.guardGfx, scale: 1, duration: 120 });
+  }
+
   // --- Roll ---------------------------------------------------------------
 
-  private startRoll(): void {
+  private tryRoll(now: number): boolean {
+    if (!input.buffered('roll') || now < this.rollReadyAt) return false;
+    input.consume('roll');
     if (input.moveX !== 0) this.facing = input.moveX > 0 ? 1 : -1;
     this.enter('roll');
     this.body.setVelocityX(this.facing * P.rollSpeed);
     this.scene.tweens.killTweensOf(this.visual);
-    this.visual.setAlpha(0.55).setScale(1.15, 0.7);
+    this.visual.setAlpha(0.45).setScale(1.25, 0.65);
+    return true;
   }
 
   private updateRoll(now: number): void {
@@ -182,68 +249,106 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
   // --- Attack -------------------------------------------------------------
 
+  private get move(): Move {
+    return this.weapon.moves[this.moveIndex];
+  }
+
   private startAttack(index: number): void {
     if (input.moveX !== 0) this.facing = input.moveX > 0 ? 1 : -1;
-    this.comboIndex = index;
+    this.moveIndex = index;
     this.attackQueued = false;
-    this.slashShown = false;
-    this.hitThisSwing.clear();
+    this.hitThisMove.clear();
+    this.lastTri = undefined;
     this.enter('attack');
-    const def = COMBO[index];
-    this.body.setVelocityX(this.facing * def.lunge);
+    this.body.setVelocityX(this.facing * this.move.lunge);
   }
 
   private updateAttack(now: number, dt: number, onGround: boolean): void {
-    const def = COMBO[this.comboIndex];
+    const move = this.move;
 
     // Roll cancels an attack at any time: this is what makes touch combat feel responsive.
-    if (input.buffered('roll') && now >= this.rollReadyAt) {
-      input.consume('roll');
-      this.startRoll();
-      return;
-    }
+    if (this.tryRoll(now)) return;
 
     // Lunge decays to a stop on the ground; in the air keep a little drift.
     const friction = onGround ? 0.82 : 0.95;
     this.body.setVelocityX(this.body.velocity.x * Math.pow(friction, dt / 16.67));
 
-    if (input.buffered('attack') && this.stateMs >= def.activeFromMs) {
+    if (input.buffered('attack') && this.stateMs >= move.activeFromMs) {
       input.consume('attack');
       this.attackQueued = true;
     }
 
-    if (this.stateMs >= def.activeFromMs && this.stateMs <= def.activeToMs) {
-      if (!this.slashShown) {
-        this.slashShown = true;
-        this.scene.showSlash(this, def, this.comboIndex);
-      }
-      this.scene.hitEnemies(this.attackRect(def), def, this.facing, this.hitThisSwing);
+    if (this.stateMs >= move.activeFromMs && this.stateMs <= move.activeToMs + dt) {
+      // Test the triangle where it is now and halfway from where it was last frame,
+      // so a fast swing can't skip over an enemy between frames.
+      const tri = this.currentTriangle();
+      const tris = this.lastTri ? [tri, midTriangle(this.lastTri, tri)] : [tri];
+      this.lastTri = tri;
+      this.scene.hitEnemies(tris, move, this.facing, this.hitThisMove);
     }
 
-    if (this.attackQueued && this.stateMs >= def.chainFromMs && this.comboIndex < COMBO.length - 1) {
-      this.startAttack(this.comboIndex + 1);
+    if (this.attackQueued && this.stateMs >= move.chainFromMs && this.moveIndex < this.weapon.moves.length - 1) {
+      this.startAttack(this.moveIndex + 1);
       return;
     }
 
-    if (this.stateMs >= def.durationMs) {
+    if (this.stateMs >= move.durationMs) {
       this.enter('normal');
-      if (this.attackQueued) {
-        // Finisher done and attack still queued: restart the combo.
-        this.startAttack(0);
-      }
+      // Last move done and attack still queued: start the sequence again.
+      if (this.attackQueued) this.startAttack(0);
     }
   }
 
-  private attackRect(def: (typeof COMBO)[number]): Phaser.Geom.Rectangle {
-    const b = this.body;
-    const x = this.facing > 0 ? b.right - 6 : b.left + 6 - def.reach;
-    const y = b.bottom - def.height - 2;
-    return new Phaser.Geom.Rectangle(x, y, def.reach, def.height);
+  private currentPose(): Pose | undefined {
+    if (this.mode === 'attack') return poseAt(this.move, this.stateMs);
+    if (this.mode === 'dead' || this.mode === 'roll') return undefined;
+    return REST_POSE;
+  }
+
+  private currentTriangle(pose = this.currentPose() ?? REST_POSE): Phaser.Geom.Triangle {
+    return triangleAt(this.weapon.shape, pose, this.x, this.centerY, this.facing);
+  }
+
+  // --- Drawing ------------------------------------------------------------
+
+  /** Runs after the physics step so visuals never lag a frame behind the body. */
+  private syncVisual(): void {
+    this.visual.setPosition(this.x, this.y);
+
+    const wg = this.weaponGfx.clear();
+    const pose = this.currentPose();
+    if (pose) {
+      const tri = this.currentTriangle(pose);
+      wg.fillStyle(PALETTE.shape, pose.alpha);
+      wg.fillTriangleShape(tri);
+      const m = this.move;
+      if (this.mode === 'attack' && this.stateMs >= m.activeFromMs && this.stateMs <= m.activeToMs + 40) {
+        this.scene.effects.trail(tri, pose.alpha);
+      }
+    }
+
+    const gg = this.guardGfx.clear();
+    if (this.mode === 'guard') {
+      this.guardGfx.setPosition(this.x + this.facing * GUARD_GAP, this.centerY);
+      gg.fillStyle(PALETTE.shape, 0.9);
+      gg.fillRect(-GUARD_SIZE / 2, -GUARD_SIZE / 2, GUARD_SIZE, GUARD_SIZE);
+    }
   }
 
   private squash(sx: number, sy: number): void {
-    if (this.mode === 'roll') return;
+    if (this.mode === 'roll' || this.mode === 'dead') return;
     this.visual.setScale(sx, sy);
     this.scene.tweens.add({ targets: this.visual, scaleX: 1, scaleY: 1, duration: 140, ease: 'Quad.easeOut' });
   }
+}
+
+function midTriangle(a: Phaser.Geom.Triangle, b: Phaser.Geom.Triangle): Phaser.Geom.Triangle {
+  return new Phaser.Geom.Triangle(
+    (a.x1 + b.x1) / 2,
+    (a.y1 + b.y1) / 2,
+    (a.x2 + b.x2) / 2,
+    (a.y2 + b.y2) / 2,
+    (a.x3 + b.x3) / 2,
+    (a.y3 + b.y3) / 2,
+  );
 }

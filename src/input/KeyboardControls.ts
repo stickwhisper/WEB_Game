@@ -1,8 +1,6 @@
 import Phaser from 'phaser';
 import { KEY_BINDINGS } from '../config';
-import { type Action, input } from './InputState';
-
-const ACTIONS: Action[] = ['jump', 'attack', 'roll'];
+import { ACTIONS, type Action, input } from './InputState';
 
 /**
  * Keyboard input. Writes into the same InputState as the touch controls, so
