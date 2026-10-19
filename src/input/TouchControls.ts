@@ -9,6 +9,8 @@ interface Button {
   /** Icon size; the touch area is TUNING.input.buttonHitRadius regardless. */
   size: number;
   pointerId: number | null;
+  /** Contextual buttons (pick) only exist while there is something to do with them. */
+  available: boolean;
   gfx: Phaser.GameObjects.Graphics;
 }
 
@@ -22,6 +24,7 @@ const I = TUNING.input;
  *   square           guard
  *   three | | |      jump   (vertical lines)
  *   three = lines    roll   (horizontal lines)
+ *   two circles      pick up / swap a weapon (target; shown only when standing on one)
  * The left half of the screen is a floating stick drawn as a horizontal line.
  *
  * Every finger is tracked by pointer id, so moving, jumping and attacking
@@ -42,8 +45,10 @@ export class TouchControls {
     scene.input.addPointer(3); // 4 simultaneous touches in total
 
     this.joyGfx = scene.add.graphics().setDepth(100);
-    for (const action of ['attack', 'guard', 'jump', 'roll'] as Action[]) {
-      this.buttons.push({ action, x: 0, y: 0, size: 0, pointerId: null, gfx: scene.add.graphics().setDepth(100) });
+    for (const action of ['attack', 'guard', 'jump', 'roll', 'pick'] as Action[]) {
+      const available = action !== 'pick';
+      const gfx = scene.add.graphics().setDepth(100).setVisible(available);
+      this.buttons.push({ action, x: 0, y: 0, size: 0, pointerId: null, available, gfx });
     }
     this.layout();
 
@@ -66,7 +71,25 @@ export class TouchControls {
     if (!enabled) this.releaseAll();
     this.enabled = enabled;
     this.joyGfx.setVisible(enabled);
-    for (const b of this.buttons) b.gfx.setVisible(enabled);
+    for (const b of this.buttons) b.gfx.setVisible(enabled && b.available);
+  }
+
+  /** Show or hide a contextual button. A hidden button ignores touches and lets go if held. */
+  setAvailable(action: Action, available: boolean): void {
+    const b = this.buttons.find((x) => x.action === action);
+    if (!b || b.available === available) return;
+    b.available = available;
+    if (!available && b.pointerId !== null) {
+      b.pointerId = null;
+      input.release(action);
+    }
+    b.gfx.setVisible(this.enabled && available);
+    this.drawButton(b);
+    if (available) {
+      // Pop in, so the new symbol is noticed.
+      b.gfx.setScale(0.4);
+      this.scene.tweens.add({ targets: b.gfx, scale: 1, duration: 180, ease: 'Back.easeOut' });
+    }
   }
 
   /** Thumb arc anchored to the bottom-right corner, so it fits any aspect ratio. */
@@ -78,6 +101,7 @@ export class TouchControls {
       guard: [w - 235, h - 175, 34],
       jump: [w - 250, h - 62, 34],
       roll: [w - 95, h - 250, 34],
+      pick: [w - 225, h - 295, 34],
     };
     for (const b of this.buttons) {
       [b.x, b.y, b.size] = place[b.action];
@@ -172,6 +196,7 @@ export class TouchControls {
     let best: Button | undefined;
     let bestDist = Infinity;
     for (const b of this.buttons) {
+      if (!b.available) continue;
       const dist = Phaser.Math.Distance.Between(x, y, b.x, b.y);
       if (dist <= I.buttonHitRadius && dist < bestDist) {
         best = b;
@@ -207,6 +232,12 @@ export class TouchControls {
         }
         break;
       }
+      case 'pick':
+        // Target: two concentric circles; the inner one fills while pressed.
+        g.strokeCircle(0, 0, half);
+        if (pressed) g.fillCircle(0, 0, half * 0.45);
+        else g.strokeCircle(0, 0, half * 0.45);
+        break;
     }
   }
 

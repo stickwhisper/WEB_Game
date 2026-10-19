@@ -25,12 +25,13 @@ export class Effects {
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
     const burst = {
-      speed: { min: 110, max: 260 },
-      // Mostly upward fan, so the shapes arc out and fall where they can be counted.
+      speed: { min: 110, max: 240 },
+      // Mostly upward fan, so the shapes arc out and can be counted at the top of the arc...
       angle: { min: 215, max: 325 },
-      lifespan: 900,
+      lifespan: 650,
       gravityY: 900,
-      alpha: { start: 1, end: 0, ease: 'Quad.easeIn' },
+      // ...then fade out on the way down, before they can cover the play area.
+      alpha: { start: 1, end: 0, ease: 'Quad.easeOut' },
       emitting: false,
     };
     this.circles = scene.add.particles(0, 0, 'circle', burst).setDepth(20);

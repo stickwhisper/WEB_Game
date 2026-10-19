@@ -10,6 +10,8 @@ import type { Move } from '../weapons';
 
 export const GameEvents = {
   HP: 'hp',
+  /** (available: boolean) the player is standing on a weapon that can be picked up. */
+  PICK_AVAILABLE: 'pick-available',
 } as const;
 
 const EXIT_SIZE = 56;
@@ -23,6 +25,7 @@ export class GameScene extends Phaser.Scene {
   private exits: Phaser.GameObjects.Graphics[] = [];
   private hitstopTimer?: Phaser.Time.TimerEvent;
   private ending = false;
+  private nearPickup?: WeaponPickup;
 
   constructor() {
     super('Game');
@@ -33,6 +36,7 @@ export class GameScene extends Phaser.Scene {
     this.pickups = [];
     this.exits = [];
     this.ending = false;
+    this.nearPickup = undefined;
     input.clearBuffered();
 
     this.effects = new Effects(this);
@@ -62,6 +66,7 @@ export class GameScene extends Phaser.Scene {
 
     if (!this.scene.isActive('UI')) this.scene.launch('UI');
     this.game.events.emit(GameEvents.HP, this.player.hp);
+    this.game.events.emit(GameEvents.PICK_AVAILABLE, false);
   }
 
   update(time: number, delta: number): void {
@@ -120,14 +125,25 @@ export class GameScene extends Phaser.Scene {
 
   // --- Flow ----------------------------------------------------------------
 
+  /** Standing on a weapon offers it; the pick input (target button / E) swaps it with the one in hand. */
   private updatePickups(): void {
+    let near: WeaponPickup | undefined;
     for (const p of this.pickups) {
       p.update();
-      const touching = p.touches(this.player.x, this.player.y);
-      if (!touching) p.armed = true;
-      else if (p.armed && !this.player.isBusy && !this.player.isDead) p.swap(this.player.equip(p.weapon));
+      if (!near && !this.player.isDead && p.touches(this.player.x, this.player.y)) near = p;
+    }
+    if (near !== this.nearPickup) {
+      this.nearPickup?.setNear(false);
+      near?.setNear(true);
+      this.nearPickup = near;
+      this.game.events.emit(GameEvents.PICK_AVAILABLE, !!near);
+    }
+    if (near && !this.player.isBusy && input.buffered('pick')) {
+      input.consume('pick');
+      near.swap(this.player.equip(near.weapon));
     }
   }
+
 
   /** No words: the last circle is gone, the circle body shrinks away, the screen goes dark. */
   private endByDeath(): void {

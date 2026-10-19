@@ -86,4 +86,5 @@ export const KEY_BINDINGS = {
   attack: ['X', 'J'],
   guard: ['V', 'L', 'SHIFT'],
   roll: ['C', 'K'],
+  pick: ['E', 'F'],
 };

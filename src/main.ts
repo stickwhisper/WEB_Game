@@ -28,7 +28,14 @@ const game = new Phaser.Game({
   },
   physics: {
     default: 'arcade',
-    arcade: { gravity: { x: 0, y: TUNING.gravity }, debug },
+    arcade: {
+      gravity: { x: 0, y: TUNING.gravity },
+      // Resolve horizontal overlap first. Walls are stacks of separate bodies; with the
+      // default (vertical first) a body pressed into a wall catches on the seams
+      // between them and loses its jump. X-first lets it slide up the wall instead.
+      forceX: true,
+      debug,
+    },
   },
   input: { activePointers: 4 },
   render: { antialias: true, roundPixels: true },

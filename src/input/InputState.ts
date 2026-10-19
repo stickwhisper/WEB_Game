@@ -1,8 +1,8 @@
 import { TUNING } from '../config';
 
-export type Action = 'jump' | 'attack' | 'guard' | 'roll';
+export type Action = 'jump' | 'attack' | 'guard' | 'roll' | 'pick';
 
-export const ACTIONS: Action[] = ['jump', 'attack', 'guard', 'roll'];
+export const ACTIONS: Action[] = ['jump', 'attack', 'guard', 'roll', 'pick'];
 
 export type InputMode = 'touch' | 'keyboard';
 
@@ -17,8 +17,8 @@ class InputState {
   touchMoveX = 0;
   keyMoveX = 0;
 
-  private held: Record<Action, boolean> = { jump: false, attack: false, guard: false, roll: false };
-  private pressedAt: Record<Action, number> = { jump: -Infinity, attack: -Infinity, guard: -Infinity, roll: -Infinity };
+  private held: Record<Action, boolean> = { jump: false, attack: false, guard: false, roll: false, pick: false };
+  private pressedAt: Record<Action, number> = { jump: -Infinity, attack: -Infinity, guard: -Infinity, roll: -Infinity, pick: -Infinity };
 
   get moveX(): number {
     return Math.max(-1, Math.min(1, this.touchMoveX + this.keyMoveX));

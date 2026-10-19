@@ -4,14 +4,13 @@ import { type WeaponDef, triangleAt } from '../weapons';
 
 /**
  * A weapon lying in the world: just its triangle, standing point-up and
- * bobbing slightly. Walking into it swaps it with the one in hand.
+ * bobbing slightly. Standing on it brightens it and offers the pick
+ * button (target); pressing that swaps it with the one in hand.
  */
 export class WeaponPickup {
   weapon: WeaponDef;
   readonly x: number;
   readonly y: number;
-  /** A freshly dropped weapon waits until the player steps off it, so it isn't picked straight back up. */
-  armed = true;
   private readonly gfx: Phaser.GameObjects.Graphics;
   private readonly scene: Phaser.Scene;
 
@@ -21,6 +20,7 @@ export class WeaponPickup {
     this.y = y;
     this.weapon = weapon;
     this.gfx = scene.add.graphics().setDepth(5);
+    this.setNear(false);
     this.draw();
   }
 
@@ -31,8 +31,12 @@ export class WeaponPickup {
 
   swap(weapon: WeaponDef): void {
     this.weapon = weapon;
-    this.armed = false;
     this.draw();
+  }
+
+  /** Brighter while the player stands on it: the world-side half of the pick prompt. */
+  setNear(near: boolean): void {
+    this.gfx.setAlpha(near ? 1 : 0.55);
   }
 
   update(): void {
@@ -43,6 +47,6 @@ export class WeaponPickup {
     const s = this.weapon.shape;
     // Stand it on its base, point up, sitting just above the ground.
     const tri = triangleAt({ ...s, base: 0 }, { angleDeg: -90, dist: 0, alpha: 1 }, this.x, this.y - 6, 1);
-    this.gfx.clear().fillStyle(PALETTE.shape, 0.85).fillTriangleShape(tri);
+    this.gfx.clear().fillStyle(PALETTE.shape, 1).fillTriangleShape(tri);
   }
 }

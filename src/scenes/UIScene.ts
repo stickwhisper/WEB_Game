@@ -50,8 +50,13 @@ export class UIScene extends Phaser.Scene {
     this.setMode(this.sys.game.device.input.touch ? 'touch' : 'keyboard');
 
     const ev = this.game.events;
+    const onPick = (available: boolean) => this.touch.setAvailable('pick', available);
     ev.on(GameEvents.HP, this.setHp, this);
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => ev.off(GameEvents.HP, this.setHp, this));
+    ev.on(GameEvents.PICK_AVAILABLE, onPick);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      ev.off(GameEvents.HP, this.setHp, this);
+      ev.off(GameEvents.PICK_AVAILABLE, onPick);
+    });
   }
 
   update(): void {
@@ -64,19 +69,46 @@ export class UIScene extends Phaser.Scene {
     this.touch.setEnabled(mode === 'touch');
   }
 
-  /** Lost circles shrink away; a new run brings them all back. */
+  /**
+   * Lost circles break off the row: each pops up a little, then drops and fades,
+   * the last one first. A new run brings them all back.
+   */
   private setHp(hp: number): void {
-    this.hpCircles.forEach((c, i) => {
-      const alive = i < hp;
-      const wasAlive = i < this.shownHp;
-      this.tweens.killTweensOf(c);
-      if (alive) {
-        c.setVisible(true).setScale(1);
-      } else if (wasAlive) {
-        this.tweens.add({ targets: c, scale: 0, duration: 260, ease: 'Back.easeIn', onComplete: () => c.setVisible(false) });
+    let order = 0;
+    for (let i = this.hpCircles.length - 1; i >= 0; i--) {
+      const c = this.hpCircles[i];
+      if (i < hp) {
+        c.setVisible(true);
+      } else if (i < this.shownHp) {
+        c.setVisible(false);
+        this.dropCircle(c.x, c.y, order++ * 70);
       }
-    });
+    }
     this.shownHp = hp;
+  }
+
+  private dropCircle(x: number, y: number, delay: number): void {
+    const drop = this.add.circle(x, y, HP_RADIUS, PALETTE.shape);
+    const drift = Phaser.Math.Between(-18, 18);
+    // Two plain tweens rather than a TweenChain: a chain's start delay left later drops stuck in place.
+    this.tweens.add({
+      targets: drop,
+      delay,
+      y: y - 10,
+      x: x + drift * 0.3,
+      duration: 120,
+      ease: 'Quad.easeOut',
+      onComplete: () =>
+        this.tweens.add({
+          targets: drop,
+          y: y + 140,
+          x: x + drift,
+          alpha: 0,
+          duration: 650,
+          ease: 'Quad.easeIn',
+          onComplete: () => drop.destroy(),
+        }),
+    });
   }
 
   /** Four corner marks. Fullscreen API is unavailable on iPhone Safari; there the icon is hidden. */
