@@ -4,6 +4,8 @@ export type Action = 'jump' | 'attack' | 'roll';
 
 const ACTIONS: Action[] = ['jump', 'attack', 'roll'];
 
+export type InputMode = 'touch' | 'keyboard';
+
 /**
  * Device-independent input. Touch controls and the keyboard both write here;
  * the player only ever reads from here.
@@ -46,13 +48,12 @@ class InputState {
     this.pressedAt[action] = -Infinity;
   }
 
-  reset(): void {
-    this.touchMoveX = 0;
-    this.keyMoveX = 0;
-    for (const a of ACTIONS) {
-      this.held[a] = false;
-      this.pressedAt[a] = -Infinity;
-    }
+  /**
+   * Drop presses that haven't been acted on yet (e.g. on stage restart).
+   * Held state is left alone: it belongs to the physical key or finger that is still down.
+   */
+  clearBuffered(): void {
+    for (const a of ACTIONS) this.pressedAt[a] = -Infinity;
   }
 }
 

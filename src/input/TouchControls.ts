@@ -22,7 +22,7 @@ const I = TUNING.input;
  *   right side - attack / jump / roll buttons in a thumb arc
  *
  * Every finger is tracked by pointer id, so moving, jumping and attacking
- * at the same time works. Mouse clicks drive the same code for desktop testing.
+ * at the same time works. Mouse clicks drive the same code when the controls are shown.
  */
 export class TouchControls {
   private readonly scene: Phaser.Scene;
@@ -32,6 +32,7 @@ export class TouchControls {
   private readonly joyBase = new Phaser.Math.Vector2();
   private readonly joyKnob = new Phaser.Math.Vector2();
   private readonly joyHome = new Phaser.Math.Vector2();
+  private enabled = true;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
@@ -54,6 +55,18 @@ export class TouchControls {
       scene.scale.off(Phaser.Scale.Events.RESIZE, this.layout, this);
       scene.game.events.off(Phaser.Core.Events.BLUR, this.releaseAll, this);
     });
+  }
+
+  /** Hidden controls ignore all pointers, so a mouse click in keyboard mode does nothing. */
+  setEnabled(enabled: boolean): void {
+    if (enabled === this.enabled) return;
+    if (!enabled) this.releaseAll();
+    this.enabled = enabled;
+    this.joyGfx.setVisible(enabled);
+    for (const b of this.buttons) {
+      b.gfx.setVisible(enabled);
+      b.text.setVisible(enabled);
+    }
   }
 
   private addButton(action: Action, label: string, color: number): void {
@@ -89,6 +102,7 @@ export class TouchControls {
   }
 
   private onDown(p: Phaser.Input.Pointer): void {
+    if (!this.enabled) return;
     const btn = this.buttonAt(p.x, p.y);
     if (btn) {
       if (btn.pointerId !== null) return;
@@ -106,7 +120,7 @@ export class TouchControls {
   }
 
   private onMove(p: Phaser.Input.Pointer): void {
-    if (p.id !== this.joyPointer) return;
+    if (!this.enabled || p.id !== this.joyPointer) return;
     this.joyKnob.set(p.x, p.y);
     this.updateStick();
   }
@@ -130,7 +144,7 @@ export class TouchControls {
     }
   }
 
-  private releaseAll(): void {
+  releaseAll(): void {
     for (const b of this.buttons) {
       if (b.pointerId !== null) {
         b.pointerId = null;

@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { type AttackDef, TUNING, VIEW_HEIGHT } from '../config';
-import { type Action, input } from '../input/InputState';
+import { input } from '../input/InputState';
 import { LEVEL_1, Level } from '../level';
 import { Enemy } from '../objects/Enemy';
 import { Player } from '../objects/Player';
@@ -28,7 +28,7 @@ export class GameScene extends Phaser.Scene {
     this.enemies = [];
     this.kills = 0;
     this.ending = false;
-    input.reset();
+    input.clearBuffered();
 
     this.drawBackdrop();
     this.level = new Level(this, LEVEL_1);
@@ -64,8 +64,6 @@ export class GameScene extends Phaser.Scene {
     cam.startFollow(this.player, true, 0.12, 0.12, 0, 40);
     cam.setDeadzone(60, 80);
     cam.fadeIn(250);
-
-    this.bindKeyboard();
 
     if (!this.scene.isActive('UI')) this.scene.launch('UI');
     this.game.events.emit(GameEvents.HP, this.player.hp);
@@ -173,32 +171,5 @@ export class GameScene extends Phaser.Scene {
     for (let i = 0; i < 30; i++) {
       near.fillStyle(0x1e1e30).fillRect(i * 220 + rnd.between(-40, 40), rnd.between(260, 380), rnd.between(30, 60), 600);
     }
-  }
-
-  private bindKeyboard(): void {
-    const kb = this.input.keyboard;
-    if (!kb) return;
-    const binds: Record<Action, string[]> = {
-      jump: ['SPACE', 'Z', 'W', 'UP'],
-      attack: ['X', 'J'],
-      roll: ['C', 'K', 'SHIFT'],
-    };
-    for (const [action, keys] of Object.entries(binds) as [Action, string[]][]) {
-      for (const k of keys) {
-        const key = kb.addKey(k);
-        key.on('down', () => input.press(action));
-        key.on('up', () => input.release(action));
-      }
-    }
-    const left = kb.addKeys('LEFT,A') as Record<string, Phaser.Input.Keyboard.Key>;
-    const right = kb.addKeys('RIGHT,D') as Record<string, Phaser.Input.Keyboard.Key>;
-    const readMove = () => {
-      const l = left.LEFT.isDown || left.A.isDown ? 1 : 0;
-      const r = right.RIGHT.isDown || right.D.isDown ? 1 : 0;
-      input.keyMoveX = r - l;
-    };
-    // Scene events outlive restarts, so unhook on shutdown to avoid stacking listeners.
-    this.events.on(Phaser.Scenes.Events.PRE_UPDATE, readMove);
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.events.off(Phaser.Scenes.Events.PRE_UPDATE, readMove));
   }
 }

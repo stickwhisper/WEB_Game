@@ -53,6 +53,18 @@ export const TUNING = {
   },
 };
 
+/**
+ * Keyboard bindings, as Phaser key names (see Phaser.Input.Keyboard.KeyCodes).
+ * Several keys per action so both arrow-key and WASD players are covered.
+ */
+export const KEY_BINDINGS = {
+  left: ['LEFT', 'A'],
+  right: ['RIGHT', 'D'],
+  jump: ['SPACE', 'UP', 'W', 'Z'],
+  attack: ['X', 'J'],
+  roll: ['C', 'K', 'SHIFT'],
+};
+
 export interface AttackDef {
   durationMs: number;
   /** Hitbox is live between these times (ms since attack start). */
