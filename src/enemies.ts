@@ -6,6 +6,7 @@ import type { TriangleShape } from './weapons';
  *   tall ellipse        hopper  - fast, fragile, leaps at you
  *   rounded square      warden  - guards its front (squares), must be hit from behind or mid-attack
  *   large flat ellipse  brute   - slow, unflinching, a huge triangle that a guard can't fully stop
+ *   (still: a grunt's form that never moves or strikes; only used to teach the attack)
  * Every value is a small integer so it can be read as a count of shapes.
  */
 
@@ -69,6 +70,18 @@ export const ENEMIES: Record<string, EnemyDef> = {
     heavy: false,
     drops: 1,
     attack: { kind: 'lunge', damage: 2, range: 90, windupMs: 500, activeMs: 220, recoverMs: 550, speed: 420, hop: 0, weapon: { base: 10, length: 26, width: 16 } },
+  },
+  still: {
+    id: 'still',
+    body: { width: 48, height: 30 },
+    maxHp: 3,
+    patrolSpeed: 0,
+    chaseSpeed: 0,
+    guardPower: 0,
+    heavy: false,
+    drops: 1,
+    // Range 0: it never starts a wind-up.
+    attack: { kind: 'lunge', damage: 0, range: 0, windupMs: 500, activeMs: 220, recoverMs: 550, speed: 0, hop: 0, weapon: { base: 10, length: 26, width: 16 } },
   },
   hopper: {
     id: 'hopper',

@@ -2,12 +2,13 @@ import Phaser from 'phaser';
 import { PALETTE, TUNING } from '../config';
 import { Effects } from '../effects';
 import { input } from '../input/InputState';
-import { LEVEL_1, Level } from '../level';
+import { Level } from '../level';
 import { Enemy } from '../objects/Enemy';
 import { Player } from '../objects/Player';
 import { HealthDrop } from '../objects/HealthDrop';
 import { WeaponPickup } from '../objects/WeaponPickup';
-import type { Move } from '../weapons';
+import { run } from '../run';
+import { type Move, WEAPONS } from '../weapons';
 
 export const GameEvents = {
   HP: 'hp',
@@ -17,6 +18,11 @@ export const GameEvents = {
 
 const EXIT_SIZE = 56;
 
+interface Exit {
+  gfx: Phaser.GameObjects.Graphics;
+  open: boolean;
+}
+
 export class GameScene extends Phaser.Scene {
   level!: Level;
   player!: Player;
@@ -24,7 +30,7 @@ export class GameScene extends Phaser.Scene {
   private enemies: Enemy[] = [];
   private pickups: WeaponPickup[] = [];
   private drops: HealthDrop[] = [];
-  private exits: Phaser.GameObjects.Graphics[] = [];
+  private exits: Exit[] = [];
   private hitstopTimer?: Phaser.Time.TimerEvent;
   private ending = false;
   private nearPickup?: WeaponPickup;
@@ -43,19 +49,24 @@ export class GameScene extends Phaser.Scene {
     input.clearBuffered();
 
     this.effects = new Effects(this);
-    this.level = new Level(this, LEVEL_1);
+    this.level = new Level(this, run.room.grid);
     this.physics.world.setBounds(0, 0, this.level.widthPx, this.level.heightPx);
 
-    // The exit is a square: leaving the stage is leaving the health system.
-    for (const e of this.level.exits) {
-      const g = this.add.graphics({ x: e.x, y: e.y - EXIT_SIZE / 2 }).setDepth(-0.5);
-      g.lineStyle(3, PALETTE.shape, 0.9).strokeRect(-EXIT_SIZE / 2, -EXIT_SIZE / 2, EXIT_SIZE, EXIT_SIZE);
-      this.exits.push(g);
-    }
     for (const w of this.level.weapons) this.pickups.push(new WeaponPickup(this, w.x, w.y, w.weapon));
 
+    // Health and the weapon in hand carry over from the previous room.
     this.player = new Player(this, this.level.playerSpawn.x, this.level.playerSpawn.y);
+    this.player.hp = run.hp;
+    this.player.equip(WEAPONS[run.weaponId]);
     for (const s of this.level.enemySpawns) this.enemies.push(new Enemy(this, s.x, s.y, s.enemy));
+
+    // The exit is a square: leaving the room is leaving the health system.
+    // It stays dim and shut until the room is cleared.
+    for (const e of this.level.exits) {
+      const exit = { gfx: this.add.graphics({ x: e.x, y: e.y - EXIT_SIZE / 2 }).setDepth(-0.5), open: false };
+      this.exits.push(exit);
+      this.drawExit(exit);
+    }
 
     const bodies = [this.player, ...this.enemies];
     this.physics.add.collider(bodies, this.level.solids);
@@ -77,7 +88,12 @@ export class GameScene extends Phaser.Scene {
     // run slower than physics on slow devices, stretching rolls and wind-ups.
     const dt = Math.min(delta, 100);
     this.player.update(time, dt);
-    for (const e of this.enemies) if (e.active) e.update(time, dt, this.player);
+    for (const e of this.enemies) {
+      if (!e.active) continue;
+      // Fell out of the room: gone, so it can't keep the exit shut forever.
+      if (e.y > this.level.heightPx + 100) e.destroy();
+      else e.update(time, dt, this.player);
+    }
     this.updatePickups();
     this.updateDrops();
 
@@ -87,7 +103,12 @@ export class GameScene extends Phaser.Scene {
       this.endByDeath();
       return;
     }
-    const exit = this.exits.find((g) => Math.abs(this.player.x - g.x) < EXIT_SIZE / 2 - 8 && Math.abs(this.player.centerY - g.y) < EXIT_SIZE / 2);
+    if (this.exits.some((e) => !e.open) && this.enemies.every((e) => !e.active || e.isDead)) {
+      for (const e of this.exits) this.openExit(e);
+    }
+    const exit = this.exits.find(
+      (e) => e.open && Math.abs(this.player.x - e.gfx.x) < EXIT_SIZE / 2 - 8 && Math.abs(this.player.centerY - e.gfx.y) < EXIT_SIZE / 2,
+    );
     if (exit) this.endByExit(exit);
   }
 
@@ -170,20 +191,36 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  /** Filled like every world shape (outlines are reserved for controls): dim while shut, bright once open. */
+  private drawExit(exit: Exit): void {
+    exit.gfx.clear().fillStyle(PALETTE.shape, exit.open ? 0.85 : 0.1).fillRect(-EXIT_SIZE / 2, -EXIT_SIZE / 2, EXIT_SIZE, EXIT_SIZE);
+  }
 
-  /** No words: the last circle is gone, the circle body shrinks away, the screen goes dark. */
+  /** The room is empty: the square brightens with a small pulse. */
+  private openExit(exit: Exit): void {
+    if (exit.open) return;
+    exit.open = true;
+    this.drawExit(exit);
+    exit.gfx.setScale(1.3);
+    this.tweens.add({ targets: exit.gfx, scale: 1, duration: 400, ease: 'Back.easeOut' });
+  }
+
+  /** No words: the last circle is gone, the circle body shrinks away, the screen goes dark. The run is over. */
   private endByDeath(): void {
     this.ending = true;
+    run.reset();
     this.time.delayedCall(1200, () => this.restartWithFade());
   }
 
-  /** The exit square grows until it is the whole screen. */
-  private endByExit(exit: Phaser.GameObjects.Graphics): void {
+  /** The exit square grows until it is the whole screen; the next room begins inside it. */
+  private endByExit(exit: Exit): void {
     this.ending = true;
-    exit.clear().fillStyle(PALETTE.shape, 1).fillRect(-EXIT_SIZE / 2, -EXIT_SIZE / 2, EXIT_SIZE, EXIT_SIZE);
-    exit.setDepth(50);
+    run.advance(this.player.hp, this.player.weapon.id);
+    const g = exit.gfx;
+    g.clear().fillStyle(PALETTE.shape, 1).fillRect(-EXIT_SIZE / 2, -EXIT_SIZE / 2, EXIT_SIZE, EXIT_SIZE);
+    g.setDepth(50);
     const cover = (Math.max(this.scale.width, this.scale.height) * 2.2) / EXIT_SIZE;
-    this.tweens.add({ targets: exit, scale: cover, duration: 900, ease: 'Cubic.easeIn', onComplete: () => this.restartWithFade() });
+    this.tweens.add({ targets: g, scale: cover, duration: 900, ease: 'Cubic.easeIn', onComplete: () => this.restartWithFade() });
   }
 
   private restartWithFade(): void {
