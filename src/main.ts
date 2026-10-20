@@ -44,5 +44,10 @@ const game = new Phaser.Game({
   scene: [BootScene, GameScene, UIScene],
 });
 
+// Offline play for the home-screen app (production builds only; see public/sw.js).
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').catch(() => {});
+}
+
 // Expose for console poking and automated tests when running with ?debug.
 if (debug) Object.assign(window, { game, telemetry, run });
