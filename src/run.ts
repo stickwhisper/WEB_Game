@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { TUNING } from './config';
-import { ARENA, POOL, type RoomDef, TUTORIAL, mirrored } from './rooms';
+import { BOSS, POOL, type RoomDef, TUTORIAL, mirrored } from './rooms';
 
 /** Pool rooms walked in one run, after the tutorial (when it is still needed). */
 const ROOMS_PER_RUN = 5;
@@ -13,7 +13,7 @@ const TAUGHT_KEY = 'agame.taught';
  *
  * The tutorial is played until it has been finished once on this device
  * (add ?fresh to the URL to see it again). After it, every run draws its
- * rooms at random from the pool, each possibly mirrored, and ends in the arena.
+ * rooms at random from the pool, each possibly mirrored, and ends in the boss room.
  */
 class Run {
   rooms: RoomDef[] = [];
@@ -38,10 +38,14 @@ class Run {
 
   reset(): void {
     const drawn = this.rnd.shuffle([...POOL]).slice(0, ROOMS_PER_RUN).map((r) => (this.rnd.frac() < 0.5 ? mirrored(r) : r));
-    this.rooms = [...(load(TAUGHT_KEY) ? [] : TUTORIAL), ...drawn, ARENA];
+    this.rooms = [...(load(TAUGHT_KEY) ? [] : TUTORIAL), ...drawn, BOSS];
     this.index = 0;
     this.hp = TUNING.player.maxHp;
     this.weaponId = 'sword';
+  }
+
+  get inBossRoom(): boolean {
+    return this.room === BOSS;
   }
 
   /** Leave the current room carrying `hp` and the weapon. A finished run starts over. */

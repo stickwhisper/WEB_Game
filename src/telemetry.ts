@@ -32,7 +32,9 @@ export type First =
   | 'pick'
   | 'heal'
   | 'kill'
-  | 'exit';
+  | 'exit'
+  /** Left the boss room: a whole run finished. */
+  | 'win';
 
 interface RoomRecord {
   room: string;

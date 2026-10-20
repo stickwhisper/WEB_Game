@@ -10,7 +10,7 @@ import { ENEMIES, type EnemyDef } from './enemies';
 import { WEAPONS, type WeaponDef } from './weapons';
 
 const WEAPON_MARKERS: Record<string, WeaponDef> = { s: WEAPONS.spear, d: WEAPONS.dagger, h: WEAPONS.hammer, w: WEAPONS.sword };
-const ENEMY_MARKERS: Record<string, EnemyDef> = { E: ENEMIES.grunt, H: ENEMIES.hopper, W: ENEMIES.warden, B: ENEMIES.brute, S: ENEMIES.still };
+const ENEMY_MARKERS: Record<string, EnemyDef> = { E: ENEMIES.grunt, H: ENEMIES.hopper, W: ENEMIES.warden, B: ENEMIES.brute, S: ENEMIES.still, X: ENEMIES.core };
 
 /**
  * Level legend:
@@ -20,6 +20,7 @@ const ENEMY_MARKERS: Record<string, EnemyDef> = { E: ENEMIES.grunt, H: ENEMIES.h
  *   E  grunt (wide ellipse)     H  hopper (tall ellipse)
  *   W  warden (rounded square)  B  brute (large flat ellipse)   (see enemies.ts)
  *   S  still (grunt form that never attacks; tutorial)
+ *   X  core (the boss)
  *   D  exit square (bottom tile)
  *   s  spear, d  dagger, h  hammer, w  sword (weapon lying on the ground)
  *   R  a random weapon may lie here

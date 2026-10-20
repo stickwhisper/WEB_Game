@@ -7,6 +7,8 @@ import type { TriangleShape } from './weapons';
  *   rounded square      warden  - guards its front (squares), must be hit from behind or mid-attack
  *   large flat ellipse  brute   - slow, unflinching, a huge triangle that a guard can't fully stop
  *   (still: a grunt's form that never moves or strikes; only used to teach the attack)
+ *   huge ellipse        core    - the boss: wears square plates that break off, three attacks,
+ *                                 quicker once half its circles are gone
  * Every value is a small integer so it can be read as a count of shapes.
  */
 
@@ -57,7 +59,17 @@ export interface EnemyDef {
   /** Circles left on the ground when it dies, to be taken back as health. */
   drops: number;
   attack: EnemyAttack;
+  /** Further attacks to choose from by distance (the boss). */
+  extraAttacks?: EnemyAttack[];
+  /**
+   * Square plates worn on the front (the boss). A hit from the front breaks into the
+   * plates first, PLATE_HP points per plate, before any circle is lost.
+   */
+  plates?: number;
 }
+
+/** Points one plate absorbs before it falls off. */
+export const PLATE_HP = 2;
 
 export const ENEMIES: Record<string, EnemyDef> = {
   grunt: {
@@ -115,5 +127,22 @@ export const ENEMIES: Record<string, EnemyDef> = {
     heavy: true,
     drops: 3,
     attack: { kind: 'swing', damage: 3, range: 105, windupMs: 850, activeMs: 230, recoverMs: 750, fromDeg: -150, toDeg: 45, weapon: { base: 10, length: 62, width: 30 } },
+  },
+  // Triangles start beyond the edge of the 100px body (half-width 50) so the wind-up is visible.
+  core: {
+    id: 'core',
+    body: { width: 100, height: 76 },
+    maxHp: 24,
+    patrolSpeed: 40,
+    chaseSpeed: 80,
+    guardPower: 0,
+    heavy: true,
+    drops: 5,
+    plates: 4,
+    attack: { kind: 'swing', damage: 3, range: 130, windupMs: 800, activeMs: 240, recoverMs: 650, fromDeg: -150, toDeg: 40, weapon: { base: 34, length: 72, width: 34 } },
+    extraAttacks: [
+      { kind: 'lunge', damage: 2, range: 200, windupMs: 600, activeMs: 300, recoverMs: 600, speed: 460, hop: 0, weapon: { base: 48, length: 40, width: 22 } },
+      { kind: 'lunge', damage: 2, range: 300, windupMs: 700, activeMs: 600, recoverMs: 700, speed: 340, hop: 620, weapon: { base: 40, length: 34, width: 26 } },
+    ],
   },
 };

@@ -3,6 +3,7 @@ import { PALETTE, TUNING, VIEW_HEIGHT } from './config';
 import { BootScene } from './scenes/BootScene';
 import { GameScene } from './scenes/GameScene';
 import { UIScene } from './scenes/UIScene';
+import { run } from './run';
 import { telemetry } from './telemetry';
 
 /**
@@ -44,4 +45,4 @@ const game = new Phaser.Game({
 });
 
 // Expose for console poking and automated tests when running with ?debug.
-if (debug) Object.assign(window, { game, telemetry });
+if (debug) Object.assign(window, { game, telemetry, run });

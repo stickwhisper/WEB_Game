@@ -232,6 +232,7 @@ export class GameScene extends Phaser.Scene {
   private endByExit(exit: Exit): void {
     this.ending = true;
     telemetry.first('exit');
+    if (run.inBossRoom) telemetry.first('win');
     telemetry.leaveRoom('exit');
     run.advance(this.player.hp, this.player.weapon.id);
     const g = exit.gfx;
