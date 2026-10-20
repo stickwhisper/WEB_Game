@@ -188,7 +188,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     const rect = new Phaser.Geom.Rectangle(b.x, b.y, b.width, b.height);
     if (!tris.some((t) => Phaser.Geom.Intersects.RectangleToTriangle(rect, t))) return;
 
-    const result = player.receiveAttack(this.def.attack.damage, this.x);
+    const result = player.receiveAttack(this.def.attack.damage, this.x, this.def.id);
     if (result === 'ignored') return; // rolled through: the attack carries on
     this.attackSpent = true;
     if (this.def.attack.kind === 'lunge') this.body.setVelocityX(0);

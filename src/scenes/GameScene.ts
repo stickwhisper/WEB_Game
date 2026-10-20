@@ -8,6 +8,7 @@ import { Player } from '../objects/Player';
 import { HealthDrop } from '../objects/HealthDrop';
 import { WeaponPickup } from '../objects/WeaponPickup';
 import { run } from '../run';
+import { telemetry } from '../telemetry';
 import { type Move, WEAPONS } from '../weapons';
 
 export const GameEvents = {
@@ -91,6 +92,7 @@ export class GameScene extends Phaser.Scene {
     this.game.events.emit(GameEvents.HP, this.player.hp);
     this.game.events.emit(GameEvents.PICK_AVAILABLE, false);
     this.game.events.emit(GameEvents.PROGRESS, run.exitsPassed);
+    telemetry.enterRoom(run.room.id, run.index);
   }
 
   update(time: number, delta: number): void {
@@ -108,7 +110,7 @@ export class GameScene extends Phaser.Scene {
     this.updateDrops();
 
     if (this.ending) return;
-    if (this.player.y > this.level.heightPx + 100) this.player.receiveAttack(TUNING.player.maxHp, this.player.x);
+    if (this.player.y > this.level.heightPx + 100) this.player.receiveAttack(TUNING.player.maxHp, this.player.x, 'fall');
     if (this.player.isDead) {
       this.endByDeath();
       return;
@@ -136,6 +138,7 @@ export class GameScene extends Phaser.Scene {
       hits++;
     }
     if (hits > 0) {
+      telemetry.first('hit-enemy');
       this.hitStop(move.hitstopMs);
       this.cameras.main.shake(90, move.shake);
     }
@@ -149,6 +152,7 @@ export class GameScene extends Phaser.Scene {
 
   /** A dead enemy leaves its circles on the ground, fanned out around where it fell. */
   onEnemyKilled(enemy: Enemy): void {
+    telemetry.first('kill');
     this.cameras.main.shake(120, 0.006);
     const n = enemy.def.drops;
     for (let i = 0; i < n; i++) {
@@ -197,6 +201,7 @@ export class GameScene extends Phaser.Scene {
     }
     if (near && !this.player.isBusy && input.buffered('pick')) {
       input.consume('pick');
+      telemetry.first('pick');
       near.swap(this.player.equip(near.weapon));
     }
   }
@@ -218,6 +223,7 @@ export class GameScene extends Phaser.Scene {
   /** No words: the last circle is gone, the circle body shrinks away, the screen goes dark. The run is over. */
   private endByDeath(): void {
     this.ending = true;
+    telemetry.leaveRoom('death', this.player.lastHitBy);
     run.reset();
     this.time.delayedCall(1200, () => this.restartWithFade());
   }
@@ -225,6 +231,8 @@ export class GameScene extends Phaser.Scene {
   /** The exit square grows until it is the whole screen; the next room begins inside it. */
   private endByExit(exit: Exit): void {
     this.ending = true;
+    telemetry.first('exit');
+    telemetry.leaveRoom('exit');
     run.advance(this.player.hp, this.player.weapon.id);
     const g = exit.gfx;
     g.clear().fillStyle(PALETTE.shape, 1).fillRect(-EXIT_SIZE / 2, -EXIT_SIZE / 2, EXIT_SIZE, EXIT_SIZE);

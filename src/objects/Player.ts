@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { PALETTE, TUNING } from '../config';
 import { input } from '../input/InputState';
+import { telemetry } from '../telemetry';
 import type { GameScene } from '../scenes/GameScene';
 import { type Move, type Pose, type WeaponDef, WEAPONS, midTriangle, poseAt, triangleAt } from '../weapons';
 import type { Enemy } from './Enemy';
@@ -39,6 +40,9 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   private jumpCut = false;
   private rollReadyAt = 0;
   private invulnUntil = 0;
+
+  /** What dealt the last damage (enemy id, or 'fall'), for the learning record. */
+  lastHitBy = '';
 
   private moveIndex = 0;
   private attackQueued = false;
@@ -112,6 +116,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     if (this.mode === 'dead') return 0;
     const taken = Math.min(amount, P.maxHp - this.hp);
     this.hp += taken;
+    if (taken > 0) telemetry.first('heal');
     if (taken > 0) this.scene.onPlayerHealed(this.hp);
     return taken;
   }
@@ -128,10 +133,10 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   }
 
   /**
-   * An attack of `damage` points arrives from `fromX`.
+   * An attack of `damage` points arrives from `fromX` (dealt by `source`).
    * A guard facing the attacker turns up to `guardPower` points into squares; the rest become circles.
    */
-  receiveAttack(damage: number, fromX: number): HitResult {
+  receiveAttack(damage: number, fromX: number, source = ''): HitResult {
     const now = this.scene.time.now;
     if (this.mode === 'roll' || this.mode === 'dead' || now < this.invulnUntil) return 'ignored';
 
@@ -143,6 +148,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       const blocked = parried ? damage : Math.min(damage, P.guardPower);
       fx.block(blocked, this.x + this.facing * GUARD_GAP, this.centerY);
       this.pulseGuard();
+      telemetry.first(parried ? 'parry' : 'block');
+      telemetry.damage(0, blocked);
       damage -= blocked;
       if (damage <= 0) {
         this.body.setVelocityX(-towardAttacker * (parried ? 80 : 200));
@@ -152,7 +159,9 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       }
     }
 
+    telemetry.damage(Math.min(damage, this.hp), 0); // circles actually lost
     this.hp = Math.max(0, this.hp - damage);
+    this.lastHitBy = source;
     fx.bleed(damage, this.x, this.centerY);
     this.invulnUntil = now + P.invulnMs;
     this.body.setVelocity(-towardAttacker * 320, -320);
@@ -188,6 +197,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     if (this.tryRoll(now)) return;
     if (input.isHeld('guard')) {
       this.enter('guard');
+      telemetry.first('guard');
       return;
     }
     if (input.buffered('attack')) {
@@ -201,6 +211,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   private handleJump(now: number): void {
     if (input.buffered('jump') && now - this.lastGroundedAt <= P.coyoteMs) {
       input.consume('jump');
+      telemetry.first('jump');
       this.body.setVelocityY(-P.jumpVelocity);
       this.lastGroundedAt = -Infinity;
       this.jumpCut = false;
@@ -220,7 +231,10 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     const step = (accel * dt) / 1000;
     const next = vx < target ? Math.min(target, vx + step) : Math.max(target, vx - step);
     this.body.setVelocityX(next);
-    if (moveX !== 0) this.facing = moveX > 0 ? 1 : -1;
+    if (moveX !== 0) {
+      this.facing = moveX > 0 ? 1 : -1;
+      telemetry.first('move');
+    }
   }
 
   // --- Guard --------------------------------------------------------------
@@ -243,6 +257,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   private tryRoll(now: number): boolean {
     if (!input.buffered('roll') || now < this.rollReadyAt) return false;
     input.consume('roll');
+    telemetry.first('roll');
     if (input.moveX !== 0) this.facing = input.moveX > 0 ? 1 : -1;
     this.enter('roll');
     this.body.setVelocityX(this.facing * P.rollSpeed);
@@ -267,6 +282,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   }
 
   private startAttack(index: number): void {
+    telemetry.first('attack');
     if (input.moveX !== 0) this.facing = input.moveX > 0 ? 1 : -1;
     this.moveIndex = index;
     this.attackQueued = false;

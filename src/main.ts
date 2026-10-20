@@ -3,6 +3,7 @@ import { PALETTE, TUNING, VIEW_HEIGHT } from './config';
 import { BootScene } from './scenes/BootScene';
 import { GameScene } from './scenes/GameScene';
 import { UIScene } from './scenes/UIScene';
+import { telemetry } from './telemetry';
 
 /**
  * Fixed 540px logical height; width follows the device's landscape aspect
@@ -43,4 +44,4 @@ const game = new Phaser.Game({
 });
 
 // Expose for console poking and automated tests when running with ?debug.
-if (debug) (window as unknown as { game: Phaser.Game }).game = game;
+if (debug) Object.assign(window, { game, telemetry });
