@@ -46,6 +46,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
   private moveIndex = 0;
   private attackQueued = false;
+  private swingSounded = false;
   private readonly hitThisMove = new Set<Enemy>();
   private lastTri?: Phaser.Geom.Triangle;
 
@@ -116,7 +117,10 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     if (this.mode === 'dead') return 0;
     const taken = Math.min(amount, P.maxHp - this.hp);
     this.hp += taken;
-    if (taken > 0) telemetry.first('heal');
+    if (taken > 0) {
+      telemetry.first('heal');
+      this.scene.effects.tones.regain();
+    }
     if (taken > 0) this.scene.onPlayerHealed(this.hp);
     return taken;
   }
@@ -286,6 +290,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     if (input.moveX !== 0) this.facing = input.moveX > 0 ? 1 : -1;
     this.moveIndex = index;
     this.attackQueued = false;
+    this.swingSounded = false;
     this.hitThisMove.clear();
     this.lastTri = undefined;
     this.enter('attack');
@@ -308,6 +313,10 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     }
 
     if (this.stateMs >= move.activeFromMs && this.stateMs <= move.activeToMs + dt) {
+      if (!this.swingSounded) {
+        this.swingSounded = true;
+        this.scene.effects.tones.triangle();
+      }
       // Test the triangle where it is now and halfway from where it was last frame,
       // so a fast swing can't skip over an enemy between frames.
       const tri = this.currentTriangle();

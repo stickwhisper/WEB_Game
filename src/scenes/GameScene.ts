@@ -215,6 +215,7 @@ export class GameScene extends Phaser.Scene {
   private openExit(exit: Exit): void {
     if (exit.open) return;
     exit.open = true;
+    this.effects.tones.exitOpens();
     this.drawExit(exit);
     exit.gfx.setScale(1.3);
     this.tweens.add({ targets: exit.gfx, scale: 1, duration: 400, ease: 'Back.easeOut' });
@@ -234,6 +235,7 @@ export class GameScene extends Phaser.Scene {
     telemetry.first('exit');
     if (run.inBossRoom) telemetry.first('win');
     telemetry.leaveRoom('exit');
+    this.effects.tones.exitEntered();
     run.advance(this.player.hp, this.player.weapon.id);
     const g = exit.gfx;
     g.clear().fillStyle(PALETTE.shape, 1).fillRect(-EXIT_SIZE / 2, -EXIT_SIZE / 2, EXIT_SIZE, EXIT_SIZE);

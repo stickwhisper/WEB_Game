@@ -222,6 +222,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
 
   private startAttack(player: Player): void {
     const atk = this.atk;
+    this.scene.effects.tones.triangle(true);
     this.enter('attack');
     this.attackSpent = false;
     this.lastTri = undefined;

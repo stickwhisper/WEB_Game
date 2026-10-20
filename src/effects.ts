@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { PALETTE } from './config';
+import { Tones } from './tones';
 
 const TRAIL_MS = 140;
 
@@ -14,6 +15,7 @@ interface Ghost {
  *   bleed(n)  - n circles leave a body (health lost)
  *   block(n)  - n squares leave a guard (damage that never reached health)
  *   trail()   - fading triangle afterimages along an attack's path
+ * with a matching tone per shape (see tones.ts).
  */
 export class Effects {
   private readonly circles: Phaser.GameObjects.Particles.ParticleEmitter;
@@ -21,9 +23,12 @@ export class Effects {
   private readonly trailGfx: Phaser.GameObjects.Graphics;
   private readonly ghosts: Ghost[] = [];
   private readonly scene: Phaser.Scene;
+  /** Each shape also has a pitch; bleed and block sound once per shape. */
+  readonly tones: Tones;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
+    this.tones = new Tones(scene);
     const burst = {
       speed: { min: 110, max: 240 },
       // Mostly upward fan, so the shapes arc out and can be counted at the top of the arc...
@@ -42,11 +47,15 @@ export class Effects {
   }
 
   bleed(count: number, x: number, y: number): void {
-    if (count > 0) this.circles.explode(count, x, y);
+    if (count <= 0) return;
+    this.circles.explode(count, x, y);
+    this.tones.circles(count);
   }
 
   block(count: number, x: number, y: number): void {
-    if (count > 0) this.squares.explode(count, x, y);
+    if (count <= 0) return;
+    this.squares.explode(count, x, y);
+    this.tones.squares(count);
   }
 
   trail(tri: Phaser.Geom.Triangle, alpha: number): void {
