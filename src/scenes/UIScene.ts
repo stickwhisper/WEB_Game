@@ -7,6 +7,8 @@ import { GameEvents } from './GameScene';
 
 const HP_RADIUS = 8;
 const HP_GAP = 24;
+const PROGRESS_SIZE = 9;
+const PROGRESS_GAP = 16;
 
 /**
  * HUD + input devices, rendered above the game and unaffected by its camera.
@@ -21,6 +23,8 @@ const HP_GAP = 24;
 export class UIScene extends Phaser.Scene {
   private hpCircles: Phaser.GameObjects.Arc[] = [];
   private shownHp = 0;
+  /** One small square per exit passed in this run, under the health circles. */
+  private progress: Phaser.GameObjects.Rectangle[] = [];
   private fpsText?: Phaser.GameObjects.Text;
   private touch!: TouchControls;
   private mode?: InputMode;
@@ -37,7 +41,7 @@ export class UIScene extends Phaser.Scene {
     this.shownHp = TUNING.player.maxHp;
 
     if (new URLSearchParams(location.search).has('debug')) {
-      this.fpsText = this.add.text(24, 52, '', { fontFamily: 'monospace', fontSize: '12px', color: '#5a5a5a' });
+      this.fpsText = this.add.text(24, 72, '', { fontFamily: 'monospace', fontSize: '12px', color: '#5a5a5a' });
     }
     this.addFullscreenButton();
 
@@ -53,9 +57,11 @@ export class UIScene extends Phaser.Scene {
     const onPick = (available: boolean) => this.touch.setAvailable('pick', available);
     ev.on(GameEvents.HP, this.setHp, this);
     ev.on(GameEvents.PICK_AVAILABLE, onPick);
+    ev.on(GameEvents.PROGRESS, this.setProgress, this);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       ev.off(GameEvents.HP, this.setHp, this);
       ev.off(GameEvents.PICK_AVAILABLE, onPick);
+      ev.off(GameEvents.PROGRESS, this.setProgress, this);
     });
   }
 
@@ -85,6 +91,34 @@ export class UIScene extends Phaser.Scene {
       }
     }
     this.shownHp = hp;
+  }
+
+  /**
+   * Squares passed: a new one grows in at the end of the row. When a run ends,
+   * the whole row falls away like lost circles.
+   */
+  private setProgress(count: number): void {
+    if (count < this.progress.length) {
+      this.progress.forEach((sq, i) => {
+        this.tweens.add({
+          targets: sq,
+          delay: i * 40,
+          y: sq.y + 120,
+          alpha: 0,
+          angle: Phaser.Math.Between(-40, 40),
+          duration: 600,
+          ease: 'Quad.easeIn',
+          onComplete: () => sq.destroy(),
+        });
+      });
+      this.progress = [];
+    }
+    while (this.progress.length < count) {
+      const i = this.progress.length;
+      const sq = this.add.rectangle(28 + i * PROGRESS_GAP, 58, PROGRESS_SIZE, PROGRESS_SIZE, PALETTE.shape).setScale(0);
+      this.tweens.add({ targets: sq, scale: 1, delay: 250, duration: 260, ease: 'Back.easeOut' });
+      this.progress.push(sq);
+    }
   }
 
   /** A regained circle grows back into its place in the row. */

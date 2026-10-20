@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { PALETTE, TUNING } from '../config';
 import { Effects } from '../effects';
 import { input } from '../input/InputState';
-import { Level } from '../level';
+import { Level, VIEW_RIGHT_MARGIN } from '../level';
 import { Enemy } from '../objects/Enemy';
 import { Player } from '../objects/Player';
 import { HealthDrop } from '../objects/HealthDrop';
@@ -14,9 +14,12 @@ export const GameEvents = {
   HP: 'hp',
   /** (available: boolean) the player is standing on a weapon that can be picked up. */
   PICK_AVAILABLE: 'pick-available',
+  /** (exitsPassed: number) squares passed in this run so far. */
+  PROGRESS: 'progress',
 } as const;
 
 const EXIT_SIZE = 56;
+const RANDOM_WEAPON_CHANCE = 0.65;
 
 interface Exit {
   gfx: Phaser.GameObjects.Graphics;
@@ -53,6 +56,12 @@ export class GameScene extends Phaser.Scene {
     this.physics.world.setBounds(0, 0, this.level.widthPx, this.level.heightPx);
 
     for (const w of this.level.weapons) this.pickups.push(new WeaponPickup(this, w.x, w.y, w.weapon));
+    // R spots: sometimes a weapon, never the one already in hand.
+    for (const spot of this.level.randomWeaponSpots) {
+      if (run.rnd.frac() > RANDOM_WEAPON_CHANCE) continue;
+      const choices = Object.values(WEAPONS).filter((w) => w.id !== run.weaponId);
+      this.pickups.push(new WeaponPickup(this, spot.x, spot.y, run.rnd.pick(choices)));
+    }
 
     // Health and the weapon in hand carry over from the previous room.
     this.player = new Player(this, this.level.playerSpawn.x, this.level.playerSpawn.y);
@@ -73,7 +82,7 @@ export class GameScene extends Phaser.Scene {
     this.physics.add.collider(bodies, this.level.oneWays);
 
     const cam = this.cameras.main;
-    cam.setBounds(0, 0, this.level.widthPx, this.level.heightPx);
+    cam.setBounds(0, 0, this.level.widthPx + VIEW_RIGHT_MARGIN, this.level.heightPx);
     cam.startFollow(this.player, true, 0.12, 0.12, 0, 40);
     cam.setDeadzone(60, 80);
     cam.fadeIn(250);
@@ -81,6 +90,7 @@ export class GameScene extends Phaser.Scene {
     if (!this.scene.isActive('UI')) this.scene.launch('UI');
     this.game.events.emit(GameEvents.HP, this.player.hp);
     this.game.events.emit(GameEvents.PICK_AVAILABLE, false);
+    this.game.events.emit(GameEvents.PROGRESS, run.exitsPassed);
   }
 
   update(time: number, delta: number): void {

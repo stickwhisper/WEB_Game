@@ -1,5 +1,11 @@
 import Phaser from 'phaser';
 import { PALETTE, TILE } from './config';
+
+/**
+ * The camera may scroll this far past a room's right wall, so whatever stands at the
+ * right edge (a mirrored spawn, an exit) can come out from under the touch buttons.
+ */
+export const VIEW_RIGHT_MARGIN = 320;
 import { ENEMIES, type EnemyDef } from './enemies';
 import { WEAPONS, type WeaponDef } from './weapons';
 
@@ -16,6 +22,7 @@ const ENEMY_MARKERS: Record<string, EnemyDef> = { E: ENEMIES.grunt, H: ENEMIES.h
  *   S  still (grunt form that never attacks; tutorial)
  *   D  exit square (bottom tile)
  *   s  spear, d  dagger, h  hammer, w  sword (weapon lying on the ground)
+ *   R  a random weapon may lie here
  *   .  empty
  */
 export interface Spawn {
@@ -34,6 +41,7 @@ export class Level {
   readonly enemySpawns: (Spawn & { enemy: EnemyDef })[] = [];
   readonly exits: Spawn[] = [];
   readonly weapons: (Spawn & { weapon: WeaponDef })[] = [];
+  readonly randomWeaponSpots: Spawn[] = [];
 
   private readonly grid: string[];
 
@@ -70,6 +78,7 @@ export class Level {
         else if (ENEMY_MARKERS[ch]) this.enemySpawns.push({ ...spawn, enemy: ENEMY_MARKERS[ch] });
         else if (ch === 'D') this.exits.push(spawn);
         else if (WEAPON_MARKERS[ch]) this.weapons.push({ ...spawn, weapon: WEAPON_MARKERS[ch] });
+        else if (ch === 'R') this.randomWeaponSpots.push(spawn);
       }
     }
   }
@@ -104,6 +113,8 @@ export class Level {
   /** Flat masses and thin lines: no texture, no tile grid, nothing that reads as a square. */
   private draw(scene: Phaser.Scene): void {
     const g = scene.add.graphics().setDepth(-1);
+    // Solid mass beyond the right wall, where the camera may look (see VIEW_RIGHT_MARGIN).
+    g.fillStyle(PALETTE.terrain).fillRect(this.widthPx, 0, VIEW_RIGHT_MARGIN, this.heightPx);
     for (let r = 0; r < this.rows; r++) {
       for (let c = 0; c < this.cols; c++) {
         const ch = this.grid[r][c];
