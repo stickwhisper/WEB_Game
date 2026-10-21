@@ -110,7 +110,7 @@ export class GameScene extends Phaser.Scene {
     this.updateDrops();
 
     if (this.ending) return;
-    if (this.player.y > this.level.heightPx + 100) this.player.receiveAttack(TUNING.player.maxHp, this.player.x, 'fall');
+    if (this.player.y > this.level.heightPx + 40) this.player.fallBack();
     if (this.player.isDead) {
       this.endByDeath();
       return;

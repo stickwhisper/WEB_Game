@@ -44,6 +44,9 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   /** What dealt the last damage (enemy id, or 'fall'), for the learning record. */
   lastHitBy = '';
 
+  /** Last place it stood with solid ground under both feet: where a fall brings it back. */
+  private readonly safe = new Phaser.Math.Vector2();
+
   private moveIndex = 0;
   private attackQueued = false;
   private swingSounded = false;
@@ -59,6 +62,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.body.setSize(28, RADIUS * 2);
     this.body.setMaxVelocityY(TUNING.maxFallSpeed);
 
+    this.safe.set(x, y);
     this.visual = scene.add.image(x, y, 'player').setOrigin(0.5, 1).setDepth(10);
     this.weaponGfx = scene.add.graphics().setDepth(12);
     this.guardGfx = scene.add.graphics().setDepth(12);
@@ -89,6 +93,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     if (onGround && !this.wasOnGround) this.squash(1.2, 0.8);
     this.wasOnGround = onGround;
     this.stateMs += dt;
+    if (onGround && this.mode !== 'dead') this.rememberSafeGround();
 
     switch (this.mode) {
       case 'normal':
@@ -172,12 +177,46 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.scene.onPlayerHurt(this.hp);
 
     if (this.hp <= 0) {
-      this.enter('dead');
-      this.scene.tweens.killTweensOf(this.visual);
-      this.scene.tweens.add({ targets: this.visual, scale: 0, duration: 500, ease: 'Quad.easeIn' });
+      this.die();
       return 'hit';
     }
     this.enter('hurt');
+    this.blink();
+    return 'hit';
+  }
+
+  /**
+   * Fell out of the room: one circle is lost and it comes back on the last solid
+   * ground it stood on. Guard, roll and invulnerability don't help against a fall.
+   */
+  fallBack(): void {
+    if (this.mode === 'dead') return;
+    telemetry.damage(Math.min(P.fallDamage, this.hp), 0);
+    this.hp = Math.max(0, this.hp - P.fallDamage);
+    this.lastHitBy = 'fall';
+    this.scene.onPlayerHurt(this.hp);
+    if (this.hp <= 0) {
+      this.die();
+      return;
+    }
+    this.body.reset(this.safe.x, this.safe.y);
+    this.visual.setPosition(this.safe.x, this.safe.y).setScale(1);
+    this.scene.cameras.main.centerOn(this.safe.x, this.safe.y);
+    this.scene.effects.bleed(P.fallDamage, this.x, this.centerY);
+    this.invulnUntil = this.scene.time.now + P.invulnMs;
+    this.enter('normal');
+    this.blink();
+  }
+
+  private die(): void {
+    this.enter('dead');
+    this.scene.tweens.killTweensOf(this.visual);
+    this.scene.tweens.add({ targets: this.visual, scale: 0, duration: 500, ease: 'Quad.easeIn' });
+  }
+
+  private blink(): void {
+    this.scene.tweens.killTweensOf(this.visual);
+    this.visual.setAlpha(1);
     this.scene.tweens.add({
       targets: this.visual,
       alpha: 0.25,
@@ -186,7 +225,14 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       repeat: Math.floor(P.invulnMs / 140) - 1,
       onComplete: () => this.visual.setAlpha(1),
     });
-    return 'hit';
+  }
+
+  /** Both feet over a solid tile ('#'), not a line platform and not hanging over an edge. */
+  private rememberSafeGround(): void {
+    const b = this.body;
+    const level = this.scene.level;
+    const below = b.bottom + 2;
+    if (level.isGroundAt(b.left + 1, below) && level.isGroundAt(b.right - 1, below)) this.safe.set(this.x, this.y);
   }
 
   private enter(state: State): void {

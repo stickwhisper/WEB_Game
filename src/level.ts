@@ -61,6 +61,14 @@ export class Level {
     this.draw(scene);
   }
 
+  /** Solid tile ('#') only: line platforms ('=') and the outside of the room don't count. */
+  isGroundAt(px: number, py: number): boolean {
+    const c = Math.floor(px / TILE);
+    const r = Math.floor(py / TILE);
+    if (r < 0 || r >= this.rows || c < 0 || c >= this.cols) return false;
+    return this.grid[r][c] === '#';
+  }
+
   isSolidAt(px: number, py: number): boolean {
     const c = Math.floor(px / TILE);
     const r = Math.floor(py / TILE);

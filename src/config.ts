@@ -56,6 +56,8 @@ export const TUNING = {
 
     hurtMs: 300,
     invulnMs: 900,
+    /** Circles lost by falling out of a room (then back on the last solid ground). */
+    fallDamage: 1,
   },
 
   /** Shared by every enemy; per-type values (form, health, attack) live in enemies.ts. */
