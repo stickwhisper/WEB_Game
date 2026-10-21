@@ -6,7 +6,7 @@ import type { GameScene } from '../scenes/GameScene';
 import type { Item } from '../items';
 import type { Loadout } from '../run';
 import { SHIELDS, type ShieldDef, blockOf, parryMsOf } from '../shields';
-import { type Move, type Pose, type WeaponDef, WEAPONS, midTriangle, poseAt, triangleAt } from '../weapons';
+import { type Move, type Pose, type SpecialMoves, type WeaponDef, WEAPONS, midTriangle, poseAt, specialMoves, triangleAt } from '../weapons';
 import type { Enemy } from './Enemy';
 
 const P = TUNING.player;
@@ -15,7 +15,20 @@ const RADIUS = 18;
 const REST_POSE: Pose = { angleDeg: 70, dist: -6, alpha: 0.3 };
 const GUARD_GAP = 24;
 
-type State = 'normal' | 'attack' | 'guard' | 'roll' | 'hurt' | 'dead';
+/** Attack pressed this soon after a roll ends (or late in the roll) becomes a dash attack. */
+const DASH_WINDOW_MS = 160;
+/** Attack still held this long when a swing ends starts charging; fully charged after CHARGE_FULL_MS. */
+const CHARGE_AFTER_MS = 280;
+const CHARGE_FULL_MS = 600;
+/** Guard held at least this long, then released: a shield bash. */
+const BASH_HOLD_MS = 450;
+const BASH_MS = 260;
+/** Roll held after the roll ends: run this much faster until it is let go. */
+const SPRINT = 1.6;
+/** Down + jump on a line platform: ignore line platforms for this long. */
+const DROP_MS = 260;
+
+type State = 'normal' | 'attack' | 'charge' | 'guard' | 'bash' | 'roll' | 'hurt' | 'dead';
 
 /** What happened when an attack reached the player. */
 export type HitResult = 'ignored' | 'parried' | 'blocked' | 'hit';
@@ -57,6 +70,15 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   private readonly safe = new Phaser.Math.Vector2();
 
   private moveIndex = 0;
+  /** A dash, air or charged move in progress (instead of the combo move). */
+  private special?: Move;
+  private rollEndedAt = -Infinity;
+  private sprinting = false;
+  /** Game time the guard button was first seen held (-1 while it isn't). */
+  private guardHeldFrom = -1;
+  private dropUntil = 0;
+  private chargeFull = false;
+  private readonly bashHit = new Set<Enemy>();
   private attackQueued = false;
   private swingSounded = false;
   private readonly hitThisMove = new Set<Enemy>();
@@ -96,6 +118,11 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     return this.y - RADIUS;
   }
 
+  /** Dropping through line platforms right now (down + jump). */
+  get dropping(): boolean {
+    return this.scene.time.now < this.dropUntil;
+  }
+
   update(now: number, dt: number): void {
     const onGround = this.body.blocked.down;
     if (onGround) this.lastGroundedAt = now;
@@ -103,6 +130,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.wasOnGround = onGround;
     this.stateMs += dt;
     if (onGround && this.mode !== 'dead') this.rememberSafeGround();
+    this.watchGuardHold(now);
 
     switch (this.mode) {
       case 'normal':
@@ -110,6 +138,12 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         break;
       case 'attack':
         this.updateAttack(now, dt, onGround);
+        break;
+      case 'charge':
+        this.updateCharge(now, dt, onGround);
+        break;
+      case 'bash':
+        this.updateBash();
         break;
       case 'guard':
         this.updateGuard(now, dt, onGround);
@@ -290,13 +324,23 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     if (this.tryRaiseShield(now)) return;
     if (input.buffered('attack')) {
       input.consume('attack');
-      this.startAttack(0);
+      if (!onGround) this.startSpecial('air');
+      else if (now - this.rollEndedAt <= DASH_WINDOW_MS) this.startSpecial('dash');
+      else this.startAttack(0);
       return;
     }
     this.handleJump(now);
   }
 
   private handleJump(now: number): void {
+    // Down + jump on a line platform: drop through it instead of jumping.
+    if (input.buffered('jump') && input.down && this.onLinePlatform()) {
+      input.consume('jump');
+      telemetry.first('drop');
+      this.dropUntil = now + DROP_MS;
+      this.body.setVelocityY(120);
+      return;
+    }
     if (input.buffered('jump') && now - this.lastGroundedAt <= P.coyoteMs) {
       input.consume('jump');
       telemetry.first('jump');
@@ -312,8 +356,17 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     }
   }
 
+  private onLinePlatform(): boolean {
+    const b = this.body;
+    const level = this.scene.level;
+    const below = b.bottom + 2;
+    return b.blocked.down && level.isLineAt(this.x, below) && !level.isGroundAt(b.left + 1, below) && !level.isGroundAt(b.right - 1, below);
+  }
+
   private applyRun(dt: number, onGround: boolean, moveX: number): void {
-    const target = moveX * P.runSpeed * this.shield.carrySpeed;
+    if (this.sprinting && !input.isHeld('roll')) this.sprinting = false;
+    const sprint = this.sprinting && this.mode === 'normal' ? SPRINT : 1;
+    const target = moveX * P.runSpeed * this.shield.carrySpeed * sprint;
     const vx = this.body.velocity.x;
     const accel = !onGround ? P.airAccel : Math.abs(target) > Math.abs(vx) ? P.groundAccel : P.groundDecel;
     const step = (accel * dt) / 1000;
@@ -366,6 +419,38 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     }
   }
 
+  /** Guard held long enough, then let go: bash with the shield. */
+  private watchGuardHold(now: number): void {
+    if (input.isHeld('guard')) {
+      if (this.guardHeldFrom < 0) this.guardHeldFrom = now;
+      return;
+    }
+    if (this.guardHeldFrom < 0) return;
+    const held = now - this.guardHeldFrom;
+    this.guardHeldFrom = -1;
+    if (held >= BASH_HOLD_MS && (this.mode === 'normal' || this.mode === 'guard')) this.startBash(now);
+  }
+
+  /** A short shove with the square: 1 damage that ignores an enemy's guard, and knocks it back. */
+  private startBash(now: number): void {
+    telemetry.first('bash');
+    if (input.moveX !== 0) this.facing = input.moveX > 0 ? 1 : -1;
+    this.shieldReadyAt = now + this.shield.cooldownMs;
+    this.bashHit.clear();
+    this.enter('bash');
+    this.scene.effects.tones.squares(1);
+  }
+
+  private updateBash(): void {
+    this.body.setVelocityX(this.stateMs < 120 ? this.facing * 320 : this.body.velocity.x * 0.8);
+    if (this.stateMs < 180) {
+      const size = this.shield.size + 14;
+      const cx = this.x + this.facing * (GUARD_GAP + 6);
+      this.scene.bashEnemies(new Phaser.Geom.Rectangle(cx - size / 2, this.centerY - size / 2, size, size), this.facing, this.bashHit);
+    }
+    if (this.stateMs >= BASH_MS) this.enter('normal');
+  }
+
   private pulseGuard(): void {
     this.guardGfx.setScale(1.4);
     this.scene.tweens.add({ targets: this.guardGfx, scale: 1, duration: 120 });
@@ -387,21 +472,51 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
   private updateRoll(now: number): void {
     this.body.setVelocityX(this.facing * P.rollSpeed);
+    // Attack late in the roll: come out of it with a dash attack.
+    if (this.stateMs >= P.rollMs * 0.4 && input.buffered('attack')) {
+      input.consume('attack');
+      this.endRoll(now);
+      this.startSpecial('dash');
+      return;
+    }
     if (this.stateMs >= P.rollMs) {
-      this.visual.setAlpha(1).setScale(1);
-      this.rollReadyAt = now + P.rollCooldownMs;
+      this.endRoll(now);
       this.enter('normal');
+    }
+  }
+
+  private endRoll(now: number): void {
+    this.visual.setAlpha(1).setScale(1);
+    this.rollReadyAt = now + P.rollCooldownMs;
+    this.rollEndedAt = now;
+    // Still holding roll: keep running fast.
+    if (input.isHeld('roll')) {
+      this.sprinting = true;
+      telemetry.first('sprint');
     }
   }
 
   // --- Attack -------------------------------------------------------------
 
   private get move(): Move {
-    return this.weapon.moves[this.moveIndex];
+    return this.special ?? this.weapon.moves[this.moveIndex];
+  }
+
+  private startSpecial(kind: keyof SpecialMoves): void {
+    telemetry.first(kind === 'dash' ? 'dash-attack' : kind === 'air' ? 'air-attack' : 'charge');
+    if (input.moveX !== 0) this.facing = input.moveX > 0 ? 1 : -1;
+    this.special = specialMoves(this.weapon)[kind];
+    this.attackQueued = false;
+    this.swingSounded = false;
+    this.hitThisMove.clear();
+    this.lastTri = undefined;
+    this.enter('attack');
+    if (kind !== 'air') this.body.setVelocityX(this.facing * this.special.lunge);
   }
 
   private startAttack(index: number): void {
     telemetry.first('attack');
+    this.special = undefined;
     if (input.moveX !== 0) this.facing = input.moveX > 0 ? 1 : -1;
     this.moveIndex = index;
     this.attackQueued = false;
@@ -440,20 +555,47 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       this.scene.hitEnemies(tris, move, this.damageOf(move), this.facing, this.hitThisMove);
     }
 
-    if (this.attackQueued && this.stateMs >= move.chainFromMs && this.moveIndex < this.weapon.moves.length - 1) {
+    if (this.attackQueued && !this.special && this.stateMs >= move.chainFromMs && this.moveIndex < this.weapon.moves.length - 1) {
       this.startAttack(this.moveIndex + 1);
       return;
     }
 
     if (this.stateMs >= move.durationMs) {
+      // Attack still held (not tapped again) after a combo swing: start charging.
+      if (!this.special && !this.attackQueued && input.heldMs('attack') >= CHARGE_AFTER_MS) {
+        this.chargeFull = false;
+        this.enter('charge');
+        return;
+      }
+      this.special = undefined;
       this.enter('normal');
       // Last move done and attack still queued: start the sequence again.
       if (this.attackQueued) this.startAttack(0);
     }
   }
 
+  /** Planted, the triangle drawn back and growing; release when full for the heavy strike. */
+  private updateCharge(now: number, dt: number, onGround: boolean): void {
+    this.applyRun(dt, onGround, 0);
+    if (input.moveX !== 0) this.facing = input.moveX > 0 ? 1 : -1;
+    if (this.tryRoll(now)) return;
+    if (!this.chargeFull && this.stateMs >= CHARGE_FULL_MS) {
+      this.chargeFull = true;
+      this.scene.effects.tones.triangle();
+    }
+    if (input.isHeld('attack')) return;
+    if (this.chargeFull) this.startSpecial('charge');
+    else this.enter('normal');
+  }
+
   private currentPose(): Pose | undefined {
     if (this.mode === 'attack') return poseAt(this.move, this.stateMs);
+    if (this.mode === 'charge') {
+      const t = Math.min(1, this.stateMs / CHARGE_FULL_MS);
+      // Fully charged: the drawn-back triangle flickers.
+      const alpha = this.chargeFull ? 0.7 + 0.3 * Math.sin(this.stateMs / 40) : 0.4 + 0.5 * t;
+      return { angleDeg: -60 - 100 * t, dist: -6 * t, alpha };
+    }
     if (this.mode === 'dead' || this.mode === 'roll') return undefined;
     return REST_POSE;
   }
@@ -483,12 +625,15 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     // The shield: raised in front, or (large only) carried on the back, dimmer.
     const gg = this.guardGfx.clear();
     const size = this.shield.size;
-    const raised = this.mode === 'guard';
+    const raised = this.mode === 'guard' || this.mode === 'bash';
     const onBack = !raised && this.shield.guardsBack && this.mode !== 'dead' && this.mode !== 'roll';
     if (raised || onBack) {
       this.guardGfx.setPosition(this.x + (raised ? this.facing : -this.facing) * GUARD_GAP, this.centerY);
+      // A bash pushes the square out further and larger.
+      const s = this.mode === 'bash' ? size * 1.35 : size;
+      if (this.mode === 'bash') this.guardGfx.x += this.facing * 6;
       gg.fillStyle(PALETTE.shape, raised ? 0.9 : 0.4);
-      gg.fillRect(-size / 2, -size / 2, size, size);
+      gg.fillRect(-s / 2, -s / 2, s, s);
     }
   }
 

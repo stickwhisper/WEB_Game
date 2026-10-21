@@ -4,6 +4,7 @@ import { BootScene } from './scenes/BootScene';
 import { GameScene } from './scenes/GameScene';
 import { SettingsScene } from './scenes/SettingsScene';
 import { UIScene } from './scenes/UIScene';
+import { input } from './input/InputState';
 import { run } from './run';
 import { telemetry } from './telemetry';
 
@@ -55,4 +56,4 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
 }
 
 // Expose for console poking and automated tests when running with ?debug.
-if (debug) Object.assign(window, { game, telemetry, run });
+if (debug) Object.assign(window, { game, telemetry, run, input });

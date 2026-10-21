@@ -36,7 +36,13 @@ export type First =
   /** Left the boss room: a whole run finished. */
   | 'win'
   /** Took a growth offer. */
-  | 'grow';
+  | 'grow'
+  | 'dash-attack'
+  | 'air-attack'
+  | 'charge'
+  | 'bash'
+  | 'drop'
+  | 'sprint';
 
 interface RoomRecord {
   room: string;

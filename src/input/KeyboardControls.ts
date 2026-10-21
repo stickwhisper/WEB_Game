@@ -15,6 +15,7 @@ export class KeyboardControls {
   enabled = true;
   /** Held direction keys in press order; the newest one decides the direction. */
   private readonly heldDirs = new Map<number, -1 | 1>();
+  private readonly heldDown = new Set<number>();
   private readonly heldActions = new Map<number, Action>();
   private readonly kb?: Phaser.Input.Keyboard.KeyboardPlugin;
 
@@ -29,7 +30,10 @@ export class KeyboardControls {
       const binding = keyMap.bindingFor(e.keyCode);
       if (!binding) return;
       onUse();
-      if (binding === 'left' || binding === 'right') {
+      if (binding === 'down') {
+        this.heldDown.add(e.keyCode);
+        input.keyDown = true;
+      } else if (binding === 'left' || binding === 'right') {
         this.heldDirs.delete(e.keyCode); // re-insert at the end = most recent
         this.heldDirs.set(e.keyCode, binding === 'left' ? -1 : 1);
         this.updateMove();
@@ -41,6 +45,7 @@ export class KeyboardControls {
     kb.on('keyup', (e: KeyboardEvent) => {
       // Release by what was pressed, not by the current map: a key may have been rebound meanwhile.
       if (this.heldDirs.delete(e.keyCode)) this.updateMove();
+      if (this.heldDown.delete(e.keyCode)) input.keyDown = this.heldDown.size > 0;
       const action = this.heldActions.get(e.keyCode);
       if (action) {
         this.heldActions.delete(e.keyCode);
@@ -63,6 +68,8 @@ export class KeyboardControls {
 
   releaseAll(): void {
     this.heldDirs.clear();
+    this.heldDown.clear();
+    input.keyDown = false;
     this.updateMove();
     for (const action of new Set(this.heldActions.values())) input.release(action);
     this.heldActions.clear();

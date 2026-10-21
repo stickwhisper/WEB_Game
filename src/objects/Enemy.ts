@@ -142,11 +142,12 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
   /**
    * Struck by the player's triangle travelling in direction `dir`.
    * From the front, a guard turns up to guardPower points into squares; the rest bleeds as circles.
+   * `ignoreGuard` (a shield bash) goes straight past the guard and the plates.
    */
-  hit(damage: number, dir: number, knockback: number): void {
+  hit(damage: number, dir: number, knockback: number, ignoreGuard = false): void {
     if (this.mode === 'dead') return;
 
-    const fromFront = dir === -this.dir;
+    const fromFront = dir === -this.dir && !ignoreGuard;
     if (this.guarding && fromFront && this.plates > 0) {
       damage = this.breakPlates(damage);
       if (damage <= 0) {

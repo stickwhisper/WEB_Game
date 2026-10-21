@@ -90,6 +90,7 @@ export const TUNING = {
 export const KEY_BINDINGS = {
   left: ['LEFT', 'A'],
   right: ['RIGHT', 'D'],
+  down: ['DOWN', 'S'],
   jump: ['SPACE', 'UP', 'W', 'Z'],
   attack: ['X', 'J'],
   guard: ['V', 'L', 'SHIFT'],

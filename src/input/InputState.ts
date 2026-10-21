@@ -16,9 +16,23 @@ export type InputMode = 'touch' | 'keyboard';
 class InputState {
   touchMoveX = 0;
   keyMoveX = 0;
+  /** Down is held (stick pulled down, or a down key): combined with jump, drops through a line platform. */
+  touchDown = false;
+  keyDown = false;
 
   private held: Record<Action, boolean> = { jump: false, attack: false, guard: false, roll: false, pick: false };
   private pressedAt: Record<Action, number> = { jump: -Infinity, attack: -Infinity, guard: -Infinity, roll: -Infinity, pick: -Infinity };
+  /** When each held action went down (unlike pressedAt, never cleared by consume). */
+  private downAt: Record<Action, number> = { jump: 0, attack: 0, guard: 0, roll: 0, pick: 0 };
+
+  get down(): boolean {
+    return this.touchDown || this.keyDown;
+  }
+
+  /** How long the action has been held down (0 when it isn't): drives the long-press actions. */
+  heldMs(action: Action): number {
+    return this.held[action] ? performance.now() - this.downAt[action] : 0;
+  }
 
   get moveX(): number {
     return Math.max(-1, Math.min(1, this.touchMoveX + this.keyMoveX));
@@ -29,6 +43,7 @@ class InputState {
     if (this.held[action]) return;
     this.held[action] = true;
     this.pressedAt[action] = performance.now();
+    this.downAt[action] = this.pressedAt[action];
   }
 
   release(action: Action): void {

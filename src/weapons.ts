@@ -151,3 +151,34 @@ export function midTriangle(a: Phaser.Geom.Triangle, b: Phaser.Geom.Triangle): P
     (a.y3 + b.y3) / 2,
   );
 }
+
+/**
+ * Moves every weapon has besides its combo, built from its own triangle so each still
+ * feels like itself:
+ *   dash    attack during or just after a roll: a long lunging stab, one point harder
+ *   air     attack in the air: a downward arc
+ *   charge  keep holding attack after a swing, release when charged: a heavy overhead,
+ *           twice the weapon's hardest hit
+ */
+export interface SpecialMoves {
+  dash: Move;
+  air: Move;
+  charge: Move;
+}
+
+const specials = new WeakMap<WeaponDef, SpecialMoves>();
+
+export function specialMoves(w: WeaponDef): SpecialMoves {
+  let s = specials.get(w);
+  if (!s) {
+    const base = w.moves[0].damage;
+    const top = Math.max(...w.moves.map((m) => m.damage));
+    s = {
+      dash: thrust({ angleDeg: 0, fromDist: -14, toDist: 26, durationMs: 340, activeFromMs: 50, activeToMs: 170, chainFromMs: 9999, damage: base + 1, lunge: 440, knockback: 300, hitstopMs: 60, shake: 0.006 }),
+      air: swing({ fromDeg: -40, toDeg: 115, durationMs: 330, activeFromMs: 50, activeToMs: 170, chainFromMs: 9999, damage: base, lunge: 0, knockback: 200, hitstopMs: 45, shake: 0.004 }),
+      charge: swing({ fromDeg: -160, toDeg: 70, durationMs: 520, activeFromMs: 110, activeToMs: 220, chainFromMs: 9999, damage: top * 2, lunge: 220, knockback: 480, hitstopMs: 120, shake: 0.012 }),
+    };
+    specials.set(w, s);
+  }
+  return s;
+}

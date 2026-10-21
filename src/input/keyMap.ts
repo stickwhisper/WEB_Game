@@ -2,9 +2,9 @@ import Phaser from 'phaser';
 import { KEY_BINDINGS } from '../config';
 import type { Action } from './InputState';
 
-/** Everything a key can be bound to: the two directions plus every action. */
-export type Binding = 'left' | 'right' | Action;
-export const BINDINGS: Binding[] = ['left', 'right', 'jump', 'attack', 'guard', 'roll', 'pick'];
+/** Everything a key can be bound to: the directions plus every action. */
+export type Binding = 'left' | 'right' | 'down' | Action;
+export const BINDINGS: Binding[] = ['left', 'right', 'down', 'jump', 'attack', 'guard', 'roll', 'pick'];
 
 const STORE_KEY = 'agame.keys';
 const codeOf = (name: string): number => Phaser.Input.Keyboard.KeyCodes[name as keyof typeof Phaser.Input.Keyboard.KeyCodes];

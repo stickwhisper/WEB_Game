@@ -152,6 +152,7 @@ export class TouchControls {
       this.joyBase.copy(this.joyHome);
       this.joyKnob.copy(this.joyHome);
       input.touchMoveX = 0;
+      input.touchDown = false;
       this.drawJoystick();
       return;
     }
@@ -177,6 +178,7 @@ export class TouchControls {
     this.joyBase.copy(this.joyHome);
     this.joyKnob.copy(this.joyHome);
     input.touchMoveX = 0;
+    input.touchDown = false;
     this.drawJoystick();
   }
 
@@ -195,6 +197,8 @@ export class TouchControls {
     // Past the dead zone, ramp to full speed by 60% travel: platformers want near-digital response.
     const ramp = Phaser.Math.Clamp((mag - I.joystickDeadZone) / (0.6 - I.joystickDeadZone), 0, 1);
     input.touchMoveX = Math.sign(nx) * ramp;
+    // Pulled well down (and more down than sideways): "down", for dropping through line platforms.
+    input.touchDown = d.y / R > 0.55 && Math.abs(d.y) > Math.abs(d.x);
     this.drawJoystick();
   }
 

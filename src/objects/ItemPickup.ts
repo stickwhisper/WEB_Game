@@ -12,9 +12,10 @@ const GROUP_GAP = 9;
  * A weapon (its triangle, point up) or a shield (its square, by size) lying in the
  * world, bobbing slightly. Standing on it brightens it, offers the pick button and
  * shows what it is worth, counted in shapes above it:
- *   weapon  one group of triangles per move of its combo, one triangle per point of damage
+ *   weapon  one triangle per point of damage of its basic hit
  *   shield  one square per point it keeps out of health (none for a parry-only shield)
  * Reach and speed show themselves the moment it is swung; damage doesn't, so it is shown.
+ * How its combo goes is left for the player to find out.
  */
 export class ItemPickup {
   item: Item;
@@ -78,11 +79,8 @@ export class ItemPickup {
   }
 
   private drawStats(attackBonus: number, guardBonus: number): void {
-    // Groups of shapes: one group per combo move for a weapon, a single group for a shield.
-    const groups =
-      this.item.kind === 'weapon'
-        ? this.item.weapon.moves.map((m) => Math.max(1, m.damage + attackBonus))
-        : [blockOf(this.item.shield, guardBonus)].filter((n) => n > 0);
+    const n = this.item.kind === 'weapon' ? Math.max(1, this.item.weapon.moves[0].damage + attackBonus) : blockOf(this.item.shield, guardBonus);
+    const groups = n > 0 ? [n] : [];
     if (!groups.length) return;
     const widths = groups.map((n) => n * STAT_SIZE + (n - 1) * STAT_GAP);
     const total = widths.reduce((a, b) => a + b, 0) + (groups.length - 1) * GROUP_GAP;

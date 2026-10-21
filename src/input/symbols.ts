@@ -6,6 +6,7 @@ import type { Binding } from './keyMap';
  * The control symbols, drawn centred on (0, 0) of `g`: outlines normally, filled when `filled`.
  * Shared by the touch buttons and the settings screen so both speak the same language.
  *   left / right  a chevron
+ *   down          a chevron pointing down
  *   attack        triangle
  *   guard         square
  *   jump          three vertical lines
@@ -25,6 +26,11 @@ export function drawSymbol(g: Phaser.GameObjects.Graphics, binding: Binding, siz
       g.lineBetween(d * half * 0.4, 0, -d * half * 0.4, half * 0.7);
       break;
     }
+    case 'down':
+      g.lineStyle((filled ? 6 : 4) * lineScale, PALETTE.shape, alpha);
+      g.lineBetween(-half * 0.7, -half * 0.4, 0, half * 0.4);
+      g.lineBetween(0, half * 0.4, half * 0.7, -half * 0.4);
+      break;
     case 'attack':
       if (filled) g.fillTriangle(-half, half * 0.8, half, half * 0.8, 0, -half);
       else g.strokeTriangle(-half, half * 0.8, half, half * 0.8, 0, -half);

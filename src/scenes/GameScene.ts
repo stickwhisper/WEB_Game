@@ -92,7 +92,9 @@ export class GameScene extends Phaser.Scene {
 
     const bodies = [this.player, ...this.enemies];
     this.physics.add.collider(bodies, this.level.solids);
-    this.physics.add.collider(bodies, this.level.oneWays);
+    this.physics.add.collider(this.enemies, this.level.oneWays);
+    // The player falls through line platforms while dropping (down + jump).
+    this.physics.add.collider(this.player, this.level.oneWays, undefined, () => !this.player.dropping);
 
     const cam = this.cameras.main;
     cam.setBounds(0, 0, this.level.widthPx + VIEW_RIGHT_MARGIN, this.level.heightPx);
@@ -154,6 +156,23 @@ export class GameScene extends Phaser.Scene {
       telemetry.first('hit-enemy');
       this.hitStop(move.hitstopMs);
       this.cameras.main.shake(90, move.shake);
+    }
+  }
+
+  /** Shield bash: 1 damage that ignores the enemy's guard (shield or plates), once per enemy per bash. */
+  bashEnemies(rect: Phaser.Geom.Rectangle, dir: number, alreadyHit: Set<Enemy>): void {
+    let hits = 0;
+    for (const e of this.enemies) {
+      if (!e.active || e.isDead || alreadyHit.has(e)) continue;
+      const b = e.body;
+      if (!Phaser.Geom.Intersects.RectangleToRectangle(rect, new Phaser.Geom.Rectangle(b.x, b.y, b.width, b.height))) continue;
+      alreadyHit.add(e);
+      e.hit(1, dir, 320, true);
+      hits++;
+    }
+    if (hits > 0) {
+      this.hitStop(70);
+      this.cameras.main.shake(90, 0.005);
     }
   }
 
