@@ -1,14 +1,31 @@
 import Phaser from 'phaser';
 import { TUNING } from './config';
 import { BOSS, POOL, type RoomDef, TUTORIAL, mirrored } from './rooms';
+import type { ShieldDef } from './shields';
 
 /** Pool rooms walked in one run, after the tutorial (when it is still needed). */
 const ROOMS_PER_RUN = 5;
 const TAUGHT_KEY = 'agame.taught';
 
+/** What the player carries from room to room. */
+export interface Loadout {
+  hp: number;
+  maxHp: number;
+  weaponId: string;
+  shieldId: ShieldDef['id'];
+  /** Added to every hit (triangle upgrades; may be negative, a hit still deals at least 1). */
+  attackBonus: number;
+  /** Added to the shield's block, or widens a parry-only shield's window (square upgrades). */
+  guardBonus: number;
+}
+
+export function freshLoadout(): Loadout {
+  return { hp: TUNING.player.maxHp, maxHp: TUNING.player.maxHp, weaponId: 'sword', shieldId: 'medium', attackBonus: 0, guardBonus: 0 };
+}
+
 /**
- * One run: a sequence of rooms walked through in order. Health and the weapon
- * in hand carry from room to room; dying throws the whole run away.
+ * One run: a sequence of rooms walked through in order. The loadout (health,
+ * weapon, shield, upgrades) carries from room to room; dying throws the whole run away.
  * Lives outside the scenes because the game scene restarts for every room.
  *
  * The tutorial is played until it has been finished once on this device
@@ -18,8 +35,7 @@ const TAUGHT_KEY = 'agame.taught';
 class Run {
   rooms: RoomDef[] = [];
   index = 0;
-  hp: number = TUNING.player.maxHp;
-  weaponId = 'sword';
+  loadout: Loadout = freshLoadout();
   readonly rnd = new Phaser.Math.RandomDataGenerator([String(Date.now())]);
 
   constructor() {
@@ -40,19 +56,17 @@ class Run {
     const drawn = this.rnd.shuffle([...POOL]).slice(0, ROOMS_PER_RUN).map((r) => (this.rnd.frac() < 0.5 ? mirrored(r) : r));
     this.rooms = [...(load(TAUGHT_KEY) ? [] : TUTORIAL), ...drawn, BOSS];
     this.index = 0;
-    this.hp = TUNING.player.maxHp;
-    this.weaponId = 'sword';
+    this.loadout = freshLoadout();
   }
 
   get inBossRoom(): boolean {
     return this.room === BOSS;
   }
 
-  /** Leave the current room carrying `hp` and the weapon. A finished run starts over. */
-  advance(hp: number, weaponId: string): void {
+  /** Leave the current room carrying `loadout`. A finished run starts over. */
+  advance(loadout: Loadout): void {
     if (this.room === TUTORIAL[TUTORIAL.length - 1]) store(TAUGHT_KEY, '1');
-    this.hp = hp;
-    this.weaponId = weaponId;
+    this.loadout = { ...loadout };
     this.index++;
     if (this.index >= this.rooms.length) this.reset();
   }

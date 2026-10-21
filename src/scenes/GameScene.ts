@@ -6,7 +6,9 @@ import { Level, VIEW_RIGHT_MARGIN } from '../level';
 import { Enemy } from '../objects/Enemy';
 import { Player } from '../objects/Player';
 import { HealthDrop } from '../objects/HealthDrop';
-import { WeaponPickup } from '../objects/WeaponPickup';
+import type { Item } from '../items';
+import { ItemPickup } from '../objects/ItemPickup';
+import { SHIELDS } from '../shields';
 import { run } from '../run';
 import { telemetry } from '../telemetry';
 import { type Move, WEAPONS } from '../weapons';
@@ -20,7 +22,7 @@ export const GameEvents = {
 } as const;
 
 const EXIT_SIZE = 56;
-const RANDOM_WEAPON_CHANCE = 0.65;
+const RANDOM_ITEM_CHANCE = 0.65;
 
 interface Exit {
   gfx: Phaser.GameObjects.Graphics;
@@ -32,12 +34,12 @@ export class GameScene extends Phaser.Scene {
   player!: Player;
   effects!: Effects;
   private enemies: Enemy[] = [];
-  private pickups: WeaponPickup[] = [];
+  private pickups: ItemPickup[] = [];
   private drops: HealthDrop[] = [];
   private exits: Exit[] = [];
   private hitstopTimer?: Phaser.Time.TimerEvent;
   private ending = false;
-  private nearPickup?: WeaponPickup;
+  private nearPickup?: ItemPickup;
 
   constructor() {
     super('Game');
@@ -56,18 +58,24 @@ export class GameScene extends Phaser.Scene {
     this.level = new Level(this, run.room.grid);
     this.physics.world.setBounds(0, 0, this.level.widthPx, this.level.heightPx);
 
-    for (const w of this.level.weapons) this.pickups.push(new WeaponPickup(this, w.x, w.y, w.weapon));
-    // R spots: sometimes a weapon, never the one already in hand.
-    for (const spot of this.level.randomWeaponSpots) {
-      if (run.rnd.frac() > RANDOM_WEAPON_CHANCE) continue;
-      const choices = Object.values(WEAPONS).filter((w) => w.id !== run.weaponId);
-      this.pickups.push(new WeaponPickup(this, spot.x, spot.y, run.rnd.pick(choices)));
+    for (const it of this.level.items) this.pickups.push(new ItemPickup(this, it.x, it.y, it.item));
+    // R spots: sometimes a weapon or a shield, never one already carried.
+    for (const spot of this.level.randomItemSpots) {
+      if (run.rnd.frac() > RANDOM_ITEM_CHANCE) continue;
+      const choices: Item[] = [
+        ...Object.values(WEAPONS)
+          .filter((w) => w.id !== run.loadout.weaponId)
+          .map((weapon): Item => ({ kind: 'weapon', weapon })),
+        ...Object.values(SHIELDS)
+          .filter((s) => s.id !== run.loadout.shieldId)
+          .map((shield): Item => ({ kind: 'shield', shield })),
+      ];
+      this.pickups.push(new ItemPickup(this, spot.x, spot.y, run.rnd.pick(choices)));
     }
 
     // Health and the weapon in hand carry over from the previous room.
     this.player = new Player(this, this.level.playerSpawn.x, this.level.playerSpawn.y);
-    this.player.hp = run.hp;
-    this.player.equip(WEAPONS[run.weaponId]);
+    this.player.applyLoadout(run.loadout);
     for (const s of this.level.enemySpawns) this.enemies.push(new Enemy(this, s.x, s.y, s.enemy));
 
     // The exit is a square: leaving the room is leaving the health system.
@@ -89,7 +97,7 @@ export class GameScene extends Phaser.Scene {
     cam.fadeIn(250);
 
     if (!this.scene.isActive('UI')) this.scene.launch('UI');
-    this.game.events.emit(GameEvents.HP, this.player.hp);
+    this.game.events.emit(GameEvents.HP, this.player.hp, this.player.maxHp);
     this.game.events.emit(GameEvents.PICK_AVAILABLE, false);
     this.game.events.emit(GameEvents.PROGRESS, run.exitsPassed);
     telemetry.enterRoom(run.room.id, run.index);
@@ -126,7 +134,8 @@ export class GameScene extends Phaser.Scene {
 
   // --- Combat hooks called by Player / Enemy -------------------------------
 
-  hitEnemies(tris: Phaser.Geom.Triangle[], move: Move, dir: number, alreadyHit: Set<Enemy>): void {
+  /** `damage` is the move's damage with the player's attack bonus already applied. */
+  hitEnemies(tris: Phaser.Geom.Triangle[], move: Move, damage: number, dir: number, alreadyHit: Set<Enemy>): void {
     let hits = 0;
     for (const e of this.enemies) {
       if (!e.active || e.isDead || alreadyHit.has(e)) continue;
@@ -134,7 +143,7 @@ export class GameScene extends Phaser.Scene {
       const rect = new Phaser.Geom.Rectangle(b.x, b.y, b.width, b.height);
       if (!tris.some((t) => Phaser.Geom.Intersects.RectangleToTriangle(rect, t))) continue;
       alreadyHit.add(e);
-      e.hit(move.damage, dir, move.knockback);
+      e.hit(damage, dir, move.knockback);
       hits++;
     }
     if (hits > 0) {
@@ -145,7 +154,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   onPlayerHurt(hp: number): void {
-    this.game.events.emit(GameEvents.HP, hp);
+    this.game.events.emit(GameEvents.HP, hp, this.player.maxHp);
     this.cameras.main.shake(160, 0.01);
     this.hitStop(80);
   }
@@ -162,7 +171,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   onPlayerHealed(hp: number): void {
-    this.game.events.emit(GameEvents.HP, hp);
+    this.game.events.emit(GameEvents.HP, hp, this.player.maxHp);
   }
 
   /** Freeze the physics world for a few ms on impact: the core of "hit feel". */
@@ -186,23 +195,23 @@ export class GameScene extends Phaser.Scene {
     this.drops = this.drops.filter((d) => !d.taken);
   }
 
-  /** Standing on a weapon offers it; the pick input (target button / E) swaps it with the one in hand. */
+  /** Standing on a weapon or shield offers it; the pick input (target button / E) swaps it with the one carried. */
   private updatePickups(): void {
-    let near: WeaponPickup | undefined;
+    let near: ItemPickup | undefined;
     for (const p of this.pickups) {
       p.update();
       if (!near && !this.player.isDead && p.touches(this.player.x, this.player.y)) near = p;
     }
     if (near !== this.nearPickup) {
       this.nearPickup?.setNear(false);
-      near?.setNear(true);
+      near?.setNear(true, this.player.attackBonus, this.player.guardBonus);
       this.nearPickup = near;
       this.game.events.emit(GameEvents.PICK_AVAILABLE, !!near);
     }
     if (near && !this.player.isBusy && input.buffered('pick')) {
       input.consume('pick');
       telemetry.first('pick');
-      near.swap(this.player.equip(near.weapon));
+      near.swap(this.player.equip(near.item));
     }
   }
 
@@ -236,7 +245,7 @@ export class GameScene extends Phaser.Scene {
     if (run.inBossRoom) telemetry.first('win');
     telemetry.leaveRoom('exit');
     this.effects.tones.exitEntered();
-    run.advance(this.player.hp, this.player.weapon.id);
+    run.advance(this.player.loadout);
     const g = exit.gfx;
     g.clear().fillStyle(PALETTE.shape, 1).fillRect(-EXIT_SIZE / 2, -EXIT_SIZE / 2, EXIT_SIZE, EXIT_SIZE);
     g.setDepth(50);

@@ -8,9 +8,19 @@ import { PALETTE, TILE } from './config';
  */
 export const VIEW_RIGHT_MARGIN = 360;
 import { ENEMIES, type EnemyDef } from './enemies';
-import { WEAPONS, type WeaponDef } from './weapons';
+import type { Item } from './items';
+import { SHIELDS } from './shields';
+import { WEAPONS } from './weapons';
 
-const WEAPON_MARKERS: Record<string, WeaponDef> = { s: WEAPONS.spear, d: WEAPONS.dagger, h: WEAPONS.hammer, w: WEAPONS.sword };
+const ITEM_MARKERS: Record<string, Item> = {
+  s: { kind: 'weapon', weapon: WEAPONS.spear },
+  d: { kind: 'weapon', weapon: WEAPONS.dagger },
+  h: { kind: 'weapon', weapon: WEAPONS.hammer },
+  w: { kind: 'weapon', weapon: WEAPONS.sword },
+  b: { kind: 'shield', shield: SHIELDS.small },
+  m: { kind: 'shield', shield: SHIELDS.medium },
+  g: { kind: 'shield', shield: SHIELDS.large },
+};
 const ENEMY_MARKERS: Record<string, EnemyDef> = { E: ENEMIES.grunt, H: ENEMIES.hopper, W: ENEMIES.warden, B: ENEMIES.brute, S: ENEMIES.still, X: ENEMIES.core };
 
 /**
@@ -24,7 +34,8 @@ const ENEMY_MARKERS: Record<string, EnemyDef> = { E: ENEMIES.grunt, H: ENEMIES.h
  *   X  core (the boss)
  *   D  exit square (bottom tile)
  *   s  spear, d  dagger, h  hammer, w  sword (weapon lying on the ground)
- *   R  a random weapon may lie here
+ *   b  small shield, m  medium shield, g  large shield
+ *   R  a random weapon or shield may lie here
  *   .  empty
  */
 export interface Spawn {
@@ -42,8 +53,8 @@ export class Level {
   readonly playerSpawn: Spawn = { x: TILE * 2, y: TILE * 2 };
   readonly enemySpawns: (Spawn & { enemy: EnemyDef })[] = [];
   readonly exits: Spawn[] = [];
-  readonly weapons: (Spawn & { weapon: WeaponDef })[] = [];
-  readonly randomWeaponSpots: Spawn[] = [];
+  readonly items: (Spawn & { item: Item })[] = [];
+  readonly randomItemSpots: Spawn[] = [];
 
   private readonly grid: string[];
 
@@ -87,8 +98,8 @@ export class Level {
         if (ch === 'P') Object.assign(this.playerSpawn, spawn);
         else if (ENEMY_MARKERS[ch]) this.enemySpawns.push({ ...spawn, enemy: ENEMY_MARKERS[ch] });
         else if (ch === 'D') this.exits.push(spawn);
-        else if (WEAPON_MARKERS[ch]) this.weapons.push({ ...spawn, weapon: WEAPON_MARKERS[ch] });
-        else if (ch === 'R') this.randomWeaponSpots.push(spawn);
+        else if (ITEM_MARKERS[ch]) this.items.push({ ...spawn, item: ITEM_MARKERS[ch] });
+        else if (ch === 'R') this.randomItemSpots.push(spawn);
       }
     }
   }

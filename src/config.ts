@@ -60,10 +60,6 @@ export const TUNING = {
     rollMs: 320,
     rollCooldownMs: 120,
 
-    /** A guard stops this much damage per hit; the rest pierces through. */
-    guardPower: 1,
-    /** Raising the guard this soon before a hit blocks all of it and staggers the attacker. */
-    parryWindowMs: 180,
 
     hurtMs: 300,
     invulnMs: 900,

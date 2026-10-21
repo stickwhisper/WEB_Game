@@ -3,6 +3,9 @@ import { PALETTE, TUNING } from '../config';
 import { input } from '../input/InputState';
 import { telemetry } from '../telemetry';
 import type { GameScene } from '../scenes/GameScene';
+import type { Item } from '../items';
+import type { Loadout } from '../run';
+import { SHIELDS, type ShieldDef, blockOf, parryMsOf } from '../shields';
 import { type Move, type Pose, type WeaponDef, WEAPONS, midTriangle, poseAt, triangleAt } from '../weapons';
 import type { Enemy } from './Enemy';
 
@@ -10,7 +13,6 @@ const P = TUNING.player;
 const RADIUS = 18;
 /** Weapon held loosely when not attacking: a faint triangle pointing down and forward. */
 const REST_POSE: Pose = { angleDeg: 70, dist: -6, alpha: 0.3 };
-const GUARD_SIZE = 22;
 const GUARD_GAP = 24;
 
 type State = 'normal' | 'attack' | 'guard' | 'roll' | 'hurt' | 'dead';
@@ -23,8 +25,15 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   declare scene: GameScene;
 
   hp: number = P.maxHp;
+  maxHp: number = P.maxHp;
   facing: 1 | -1 = 1;
   weapon: WeaponDef = WEAPONS.sword;
+  shield: ShieldDef = SHIELDS.medium;
+  /** Triangle upgrades: added to every hit (a hit still deals at least 1). */
+  attackBonus = 0;
+  /** Square upgrades: added to the shield's block, or widens a parry-only window. */
+  guardBonus = 0;
+  private shieldReadyAt = 0;
   /**
    * Squash/stretch and flashes go on this image, never on the sprite itself:
    * scaling an Arcade sprite also resizes its body and would break collisions.
@@ -117,10 +126,28 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     }
   }
 
+  applyLoadout(l: Loadout): void {
+    this.hp = l.hp;
+    this.maxHp = l.maxHp;
+    this.weapon = WEAPONS[l.weaponId];
+    this.shield = SHIELDS[l.shieldId];
+    this.attackBonus = l.attackBonus;
+    this.guardBonus = l.guardBonus;
+  }
+
+  get loadout(): Loadout {
+    return { hp: this.hp, maxHp: this.maxHp, weaponId: this.weapon.id, shieldId: this.shield.id, attackBonus: this.attackBonus, guardBonus: this.guardBonus };
+  }
+
+  /** Damage one hit of `move` deals with the current attack bonus. */
+  damageOf(move: Move): number {
+    return Math.max(1, move.damage + this.attackBonus);
+  }
+
   /** Take back `amount` circles of health, up to the maximum. Returns how many were actually taken. */
   heal(amount: number): number {
     if (this.mode === 'dead') return 0;
-    const taken = Math.min(amount, P.maxHp - this.hp);
+    const taken = Math.min(amount, this.maxHp - this.hp);
     this.hp += taken;
     if (taken > 0) {
       telemetry.first('heal');
@@ -131,19 +158,26 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   }
 
   get isFullHealth(): boolean {
-    return this.hp >= P.maxHp;
+    return this.hp >= this.maxHp;
   }
 
-  /** Swap weapons; returns the one that was dropped. */
-  equip(weapon: WeaponDef): WeaponDef {
-    const old = this.weapon;
-    this.weapon = weapon;
-    return old;
+  /** Swap a weapon or shield for the one of the same kind in hand; returns the one dropped. */
+  equip(item: Item): Item {
+    if (item.kind === 'weapon') {
+      const old = this.weapon;
+      this.weapon = item.weapon;
+      return { kind: 'weapon', weapon: old };
+    }
+    const old = this.shield;
+    this.shield = item.shield;
+    if (this.mode === 'guard') this.enter('normal');
+    return { kind: 'shield', shield: old };
   }
 
   /**
    * An attack of `damage` points arrives from `fromX` (dealt by `source`).
-   * A guard facing the attacker turns up to `guardPower` points into squares; the rest become circles.
+   * A raised shield facing the attacker parries it (all squares) or blocks part of it;
+   * a large shield carried on the back blocks attacks from behind. The rest become circles.
    */
   receiveAttack(damage: number, fromX: number, source = ''): HitResult {
     const now = this.scene.time.now;
@@ -151,11 +185,19 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
     const fx = this.scene.effects;
     const towardAttacker = fromX >= this.x ? 1 : -1;
-    if (this.mode === 'guard' && towardAttacker === this.facing) {
+    const front = towardAttacker === this.facing;
+    let blocked = 0;
+    let parried = false;
+    if (this.mode === 'guard' && front) {
       // Measured on the guard's own state timer: same clock as enemy wind-ups, even on slow frames.
-      const parried = this.stateMs <= P.parryWindowMs;
-      const blocked = parried ? damage : Math.min(damage, P.guardPower);
-      fx.block(blocked, this.x + this.facing * GUARD_GAP, this.centerY);
+      parried = this.stateMs <= parryMsOf(this.shield, this.guardBonus);
+      blocked = parried ? damage : Math.min(damage, blockOf(this.shield, this.guardBonus));
+    } else if (this.mode !== 'guard' && !front && this.shield.guardsBack) {
+      blocked = Math.min(damage, blockOf(this.shield, this.guardBonus));
+    }
+    if (blocked > 0) {
+      const side = this.mode === 'guard' ? this.facing : -this.facing;
+      fx.block(blocked, this.x + side * GUARD_GAP, this.centerY);
       this.pulseGuard();
       telemetry.first(parried ? 'parry' : 'block');
       telemetry.damage(0, blocked);
@@ -245,11 +287,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
     // Priority: roll > guard > attack > jump, so a defensive input is never eaten by something else.
     if (this.tryRoll(now)) return;
-    if (input.isHeld('guard')) {
-      this.enter('guard');
-      telemetry.first('guard');
-      return;
-    }
+    if (this.tryRaiseShield(now)) return;
     if (input.buffered('attack')) {
       input.consume('attack');
       this.startAttack(0);
@@ -275,7 +313,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   }
 
   private applyRun(dt: number, onGround: boolean, moveX: number): void {
-    const target = moveX * P.runSpeed;
+    const target = moveX * P.runSpeed * this.shield.carrySpeed;
     const vx = this.body.velocity.x;
     const accel = !onGround ? P.airAccel : Math.abs(target) > Math.abs(vx) ? P.groundAccel : P.groundDecel;
     const step = (accel * dt) / 1000;
@@ -289,12 +327,43 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
   // --- Guard --------------------------------------------------------------
 
+  /**
+   * small (tap): every press raises it for a moment, even while walking.
+   * medium (timed) / large (hold): raised while the button is held; medium drops it after activeMs.
+   * Each has a wait (cooldownMs) after lowering before it can be raised again.
+   */
+  private tryRaiseShield(now: number): boolean {
+    if (now < this.shieldReadyAt) return false;
+    const pressed = input.buffered('guard');
+    if (!(this.shield.use === 'tap' ? pressed : pressed || input.isHeld('guard'))) return false;
+    input.consume('guard');
+    this.enter('guard');
+    telemetry.first('guard');
+    return true;
+  }
+
   private updateGuard(now: number, dt: number, onGround: boolean): void {
-    // Planted: the stick only turns the guard around.
-    this.applyRun(dt, onGround, 0);
-    if (input.moveX !== 0) this.facing = input.moveX > 0 ? 1 : -1;
-    if (this.tryRoll(now)) return;
-    if (!input.isHeld('guard')) this.enter('normal');
+    const s = this.shield;
+    // Walk at the shield's raised speed; a planted shield (0) can still be turned around.
+    this.applyRun(dt, onGround, input.moveX * s.raisedSpeed);
+    if (s.raisedSpeed === 0 && input.moveX !== 0) this.facing = input.moveX > 0 ? 1 : -1;
+    if (this.tryRoll(now)) {
+      this.shieldReadyAt = now + s.cooldownMs;
+      return;
+    }
+    // Tapping a small shield again while it is up raises it afresh: a new parry window.
+    if (s.use === 'tap' && input.buffered('guard')) {
+      input.consume('guard');
+      this.stateMs = 0;
+    }
+    const up =
+      s.use === 'tap'
+        ? this.stateMs < Math.max(s.activeMs, parryMsOf(s, this.guardBonus))
+        : input.isHeld('guard') && this.stateMs < s.activeMs;
+    if (!up) {
+      this.shieldReadyAt = now + s.cooldownMs;
+      this.enter('normal');
+    }
   }
 
   private pulseGuard(): void {
@@ -368,7 +437,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       const tri = this.currentTriangle();
       const tris = this.lastTri ? [tri, midTriangle(this.lastTri, tri)] : [tri];
       this.lastTri = tri;
-      this.scene.hitEnemies(tris, move, this.facing, this.hitThisMove);
+      this.scene.hitEnemies(tris, move, this.damageOf(move), this.facing, this.hitThisMove);
     }
 
     if (this.attackQueued && this.stateMs >= move.chainFromMs && this.moveIndex < this.weapon.moves.length - 1) {
@@ -411,11 +480,15 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       }
     }
 
+    // The shield: raised in front, or (large only) carried on the back, dimmer.
     const gg = this.guardGfx.clear();
-    if (this.mode === 'guard') {
-      this.guardGfx.setPosition(this.x + this.facing * GUARD_GAP, this.centerY);
-      gg.fillStyle(PALETTE.shape, 0.9);
-      gg.fillRect(-GUARD_SIZE / 2, -GUARD_SIZE / 2, GUARD_SIZE, GUARD_SIZE);
+    const size = this.shield.size;
+    const raised = this.mode === 'guard';
+    const onBack = !raised && this.shield.guardsBack && this.mode !== 'dead' && this.mode !== 'roll';
+    if (raised || onBack) {
+      this.guardGfx.setPosition(this.x + (raised ? this.facing : -this.facing) * GUARD_GAP, this.centerY);
+      gg.fillStyle(PALETTE.shape, raised ? 0.9 : 0.4);
+      gg.fillRect(-size / 2, -size / 2, size, size);
     }
   }
 

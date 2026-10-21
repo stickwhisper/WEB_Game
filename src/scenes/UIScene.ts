@@ -118,8 +118,20 @@ export class UIScene extends Phaser.Scene {
   /**
    * Lost circles break off the row: each pops up a little, then drops and fades,
    * the last one first. Regained circles (and a new run) grow back into place.
+   * The row itself is as long as the maximum: it grows or shrinks with circle upgrades.
    */
-  private setHp(hp: number): void {
+  private setHp(hp: number, maxHp: number = this.hpCircles.length): void {
+    const k = this.k;
+    while (this.hpCircles.length < maxHp) {
+      const i = this.hpCircles.length;
+      this.hpCircles.push(this.add.circle((32 + i * HP_GAP) * k, 32 * k, HP_RADIUS * k, PALETTE.shape).setVisible(false));
+    }
+    while (this.hpCircles.length > maxHp) {
+      const c = this.hpCircles.pop()!;
+      if (c.visible) this.dropCircle(c.x, c.y, 0);
+      c.destroy();
+    }
+    this.shownHp = Math.min(this.shownHp, maxHp);
     let order = 0;
     for (let i = this.hpCircles.length - 1; i >= 0; i--) {
       const c = this.hpCircles[i];
