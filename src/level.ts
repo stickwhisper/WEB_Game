@@ -4,8 +4,9 @@ import { PALETTE, TILE } from './config';
 /**
  * The camera may scroll this far past a room's right wall, so whatever stands at the
  * right edge (a mirrored spawn, an exit) can come out from under the touch buttons.
+ * Also keeps the narrowest room (34 tiles) at least as wide as the widest view (1440).
  */
-export const VIEW_RIGHT_MARGIN = 320;
+export const VIEW_RIGHT_MARGIN = 360;
 import { ENEMIES, type EnemyDef } from './enemies';
 import { WEAPONS, type WeaponDef } from './weapons';
 

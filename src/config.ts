@@ -1,7 +1,18 @@
+import Phaser from 'phaser';
+
 // All gameplay tuning lives here so "game feel" can be adjusted in one place.
 
 export const TILE = 32;
 export const VIEW_HEIGHT = 540;
+
+/**
+ * Controls and HUD grow on small screens so they keep a usable size in real pixels.
+ * 1 when one game unit shows as at least ~0.95 CSS px (tablets); up to 1.4 on small phones.
+ */
+export function uiScale(scene: Phaser.Scene): number {
+  const cssPerUnit = scene.scale.displaySize.width / scene.scale.width;
+  return Phaser.Math.Clamp(0.95 / cssPerUnit, 1, 1.4);
+}
 
 /**
  * Monochrome only. Colour must not carry meaning; shapes do:

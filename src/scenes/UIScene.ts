@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { PALETTE, TUNING } from '../config';
+import { PALETTE, TUNING, uiScale } from '../config';
 import type { InputMode } from '../input/InputState';
 import { KeyboardControls } from '../input/KeyboardControls';
 import { TouchControls } from '../input/TouchControls';
@@ -28,20 +28,23 @@ export class UIScene extends Phaser.Scene {
   private fpsText?: Phaser.GameObjects.Text;
   private touch!: TouchControls;
   private mode?: InputMode;
+  /** HUD scale for this screen (see uiScale). */
+  private k = 1;
 
   constructor() {
     super('UI');
   }
 
   create(): void {
+    const k = (this.k = uiScale(this));
     this.hpCircles = [];
     for (let i = 0; i < TUNING.player.maxHp; i++) {
-      this.hpCircles.push(this.add.circle(32 + i * HP_GAP, 32, HP_RADIUS, PALETTE.shape));
+      this.hpCircles.push(this.add.circle((32 + i * HP_GAP) * k, 32 * k, HP_RADIUS * k, PALETTE.shape));
     }
     this.shownHp = TUNING.player.maxHp;
 
     if (new URLSearchParams(location.search).has('debug')) {
-      this.fpsText = this.add.text(24, 72, '', { fontFamily: 'monospace', fontSize: '12px', color: '#5a5a5a' });
+      this.fpsText = this.add.text(24 * k, 72 * k, '', { fontFamily: 'monospace', fontSize: '12px', color: '#5a5a5a' });
     }
     this.addFullscreenButton();
 
@@ -115,7 +118,8 @@ export class UIScene extends Phaser.Scene {
     }
     while (this.progress.length < count) {
       const i = this.progress.length;
-      const sq = this.add.rectangle(28 + i * PROGRESS_GAP, 58, PROGRESS_SIZE, PROGRESS_SIZE, PALETTE.shape).setScale(0);
+      const k = this.k;
+      const sq = this.add.rectangle((28 + i * PROGRESS_GAP) * k, 58 * k, PROGRESS_SIZE * k, PROGRESS_SIZE * k, PALETTE.shape).setScale(0);
       this.tweens.add({ targets: sq, scale: 1, delay: 250, duration: 260, ease: 'Back.easeOut' });
       this.progress.push(sq);
     }
@@ -129,7 +133,7 @@ export class UIScene extends Phaser.Scene {
   }
 
   private dropCircle(x: number, y: number, delay: number): void {
-    const drop = this.add.circle(x, y, HP_RADIUS, PALETTE.shape);
+    const drop = this.add.circle(x, y, HP_RADIUS * this.k, PALETTE.shape);
     const drift = Phaser.Math.Between(-18, 18);
     // Two plain tweens rather than a TweenChain: a chain's start delay left later drops stuck in place.
     this.tweens.add({

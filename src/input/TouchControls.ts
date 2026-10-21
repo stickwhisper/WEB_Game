@@ -1,12 +1,12 @@
 import Phaser from 'phaser';
-import { PALETTE, TUNING } from '../config';
+import { PALETTE, TUNING, uiScale } from '../config';
 import { type Action, input } from './InputState';
 
 interface Button {
   action: Action;
   x: number;
   y: number;
-  /** Icon size; the touch area is TUNING.input.buttonHitRadius regardless. */
+  /** Icon size; the touch area is TUNING.input.buttonHitRadius (both times the UI scale). */
   size: number;
   pointerId: number | null;
   /** Contextual buttons (pick) only exist while there is something to do with them. */
@@ -39,6 +39,8 @@ export class TouchControls {
   private readonly joyKnob = new Phaser.Math.Vector2();
   private readonly joyHome = new Phaser.Math.Vector2();
   private enabled = true;
+  /** UI scale for this screen (see uiScale): positions, sizes and touch areas all grow together. */
+  private k = 1;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
@@ -96,19 +98,22 @@ export class TouchControls {
   private layout(): void {
     const w = this.scene.scale.width;
     const h = this.scene.scale.height;
+    const k = (this.k = uiScale(this.scene));
+    // Offsets from the bottom-right corner, and icon size.
     const place: Record<Action, [number, number, number]> = {
-      attack: [w - 110, h - 110, 46],
-      guard: [w - 235, h - 175, 34],
-      jump: [w - 250, h - 62, 34],
-      roll: [w - 95, h - 250, 34],
-      pick: [w - 225, h - 295, 34],
+      attack: [110, 110, 46],
+      guard: [235, 175, 34],
+      jump: [250, 62, 34],
+      roll: [95, 250, 34],
+      pick: [225, 295, 34],
     };
     for (const b of this.buttons) {
-      [b.x, b.y, b.size] = place[b.action];
+      const [dx, dy, size] = place[b.action];
+      [b.x, b.y, b.size] = [w - dx * k, h - dy * k, size * k];
       b.gfx.setPosition(b.x, b.y);
       this.drawButton(b);
     }
-    this.joyHome.set(150, h - 110);
+    this.joyHome.set(150 * k, h - 110 * k);
     if (this.joyPointer === null) {
       this.joyBase.copy(this.joyHome);
       this.joyKnob.copy(this.joyHome);
@@ -198,7 +203,7 @@ export class TouchControls {
     for (const b of this.buttons) {
       if (!b.available) continue;
       const dist = Phaser.Math.Distance.Between(x, y, b.x, b.y);
-      if (dist <= I.buttonHitRadius && dist < bestDist) {
+      if (dist <= I.buttonHitRadius * this.k && dist < bestDist) {
         best = b;
         bestDist = dist;
       }
@@ -212,7 +217,7 @@ export class TouchControls {
     const s = b.size * (pressed ? 0.88 : 1);
     const alpha = pressed ? 0.95 : 0.4;
     const half = s / 2;
-    g.lineStyle(3, PALETTE.shape, alpha);
+    g.lineStyle(3 * this.k, PALETTE.shape, alpha);
     g.fillStyle(PALETTE.shape, alpha);
     switch (b.action) {
       case 'attack':
@@ -225,7 +230,7 @@ export class TouchControls {
         break;
       case 'jump':
       case 'roll': {
-        g.lineStyle(4, PALETTE.shape, alpha);
+        g.lineStyle(4 * this.k, PALETTE.shape, alpha);
         for (const o of [-half * 0.6, 0, half * 0.6]) {
           if (b.action === 'jump') g.lineBetween(o, -half, o, half);
           else g.lineBetween(-half, o, half, o);

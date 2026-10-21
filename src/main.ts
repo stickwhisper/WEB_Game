@@ -7,13 +7,17 @@ import { run } from './run';
 import { telemetry } from './telemetry';
 
 /**
- * Fixed 540px logical height; width follows the device's landscape aspect
- * ratio so wide phones (19.5:9) use the whole screen instead of letterboxing.
+ * Fixed 540px logical height; width follows the landscape aspect ratio of the
+ * area left after notches and the home indicator (#game sits inside the safe
+ * area), so phones from 4:3 to 24:9 fill the screen without bars.
  */
 function viewWidth(): number {
-  const long = Math.max(window.innerWidth, window.innerHeight);
-  const short = Math.min(window.innerWidth, window.innerHeight) || 1;
-  return Math.round(Phaser.Math.Clamp((VIEW_HEIGHT * long) / short, 800, 1280));
+  const area = document.getElementById('game')?.getBoundingClientRect();
+  const w = area?.width || window.innerWidth;
+  const h = area?.height || window.innerHeight;
+  const long = Math.max(w, h);
+  const short = Math.min(w, h) || 1;
+  return Math.round(Phaser.Math.Clamp((VIEW_HEIGHT * long) / short, 720, 1440));
 }
 
 const debug = new URLSearchParams(location.search).has('debug');
