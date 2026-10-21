@@ -4,6 +4,7 @@ import type { InputMode } from '../input/InputState';
 import { KeyboardControls } from '../input/KeyboardControls';
 import { TouchControls } from '../input/TouchControls';
 import { GameEvents } from './GameScene';
+import { takeEsc } from './SettingsScene';
 
 const HP_RADIUS = 8;
 const HP_GAP = 24;
@@ -27,7 +28,9 @@ export class UIScene extends Phaser.Scene {
   private progress: Phaser.GameObjects.Rectangle[] = [];
   private fpsText?: Phaser.GameObjects.Text;
   private touch!: TouchControls;
+  private keyboard!: KeyboardControls;
   private mode?: InputMode;
+  private settingsOpen = false;
   /** HUD scale for this screen (see uiScale). */
   private k = 1;
 
@@ -46,14 +49,18 @@ export class UIScene extends Phaser.Scene {
     if (new URLSearchParams(location.search).has('debug')) {
       this.fpsText = this.add.text(24 * k, 72 * k, '', { fontFamily: 'monospace', fontSize: '12px', color: '#5a5a5a' });
     }
-    this.addFullscreenButton();
+    this.addSettingsButton(this.addFullscreenButton());
 
     // Registered before TouchControls so the touch that switches modes also counts as a press.
     this.input.on(Phaser.Input.Events.POINTER_DOWN, (p: Phaser.Input.Pointer) => {
       if (p.wasTouch) this.setMode('touch');
     });
     this.touch = new TouchControls(this);
-    new KeyboardControls(this, () => this.setMode('keyboard'));
+    this.keyboard = new KeyboardControls(this, () => this.setMode('keyboard'));
+    this.input.keyboard?.on('keydown-ESC', (e: KeyboardEvent) => {
+      // While the screen is up, Esc is the settings screen's to close it.
+      if (!this.settingsOpen && takeEsc(e)) this.openSettings();
+    });
     this.setMode(this.sys.game.device.input.touch ? 'touch' : 'keyboard');
 
     const ev = this.game.events;
@@ -75,7 +82,37 @@ export class UIScene extends Phaser.Scene {
   private setMode(mode: InputMode): void {
     if (mode === this.mode) return;
     this.mode = mode;
-    this.touch.setEnabled(mode === 'touch');
+    if (!this.settingsOpen) this.touch.setEnabled(mode === 'touch');
+  }
+
+  /** The game pauses and every control lets go while the settings screen is up. */
+  private openSettings(): void {
+    if (this.settingsOpen) return;
+    this.settingsOpen = true;
+    this.touch.setEnabled(false);
+    this.keyboard.enabled = false;
+    this.keyboard.releaseAll();
+    if (this.scene.isActive('Game')) this.scene.pause('Game');
+    this.scene.launch('Settings');
+    this.scene.get('Settings').events.once('done', () => {
+      this.settingsOpen = false;
+      this.keyboard.enabled = true;
+      this.touch.setEnabled(this.mode === 'touch');
+      if (this.scene.isPaused('Game')) this.scene.resume('Game');
+    });
+  }
+
+  /** Settings: two slider lines with their knobs, left of the fullscreen marks. */
+  private addSettingsButton(rightEdge: number): void {
+    const x = rightEdge - 28;
+    const y = 32;
+    const g = this.add.graphics({ x, y }).lineStyle(3, PALETTE.shape, 0.5);
+    g.lineBetween(-12, -6, 12, -6);
+    g.lineBetween(-12, 6, 12, 6);
+    g.lineStyle(4, PALETTE.shape, 0.5);
+    g.lineBetween(-5, -11, -5, -1);
+    g.lineBetween(5, 1, 5, 11);
+    this.add.zone(x, y, 56, 56).setInteractive({ useHandCursor: true }).on(Phaser.Input.Events.POINTER_UP, () => this.openSettings());
   }
 
   /**
@@ -156,9 +193,12 @@ export class UIScene extends Phaser.Scene {
     });
   }
 
-  /** Four corner marks. Fullscreen API is unavailable on iPhone Safari; there the icon is hidden. */
-  private addFullscreenButton(): void {
-    if (!this.scale.fullscreen.available) return;
+  /**
+   * Four corner marks. Fullscreen API is unavailable on iPhone Safari; there the icon is hidden.
+   * Returns the left edge of the space it took, for the next icon to its left.
+   */
+  private addFullscreenButton(): number {
+    if (!this.scale.fullscreen.available) return this.scale.width - 8;
     const x = this.scale.width - 36;
     const y = 32;
     const s = 12;
@@ -179,5 +219,6 @@ export class UIScene extends Phaser.Scene {
       const orientation = screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> };
       orientation.lock?.('landscape').catch(() => {});
     });
+    return x - 28;
   }
 }

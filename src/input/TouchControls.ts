@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { PALETTE, TUNING, uiScale } from '../config';
 import { type Action, input } from './InputState';
+import { drawSymbol } from './symbols';
 
 interface Button {
   action: Action;
@@ -214,37 +215,9 @@ export class TouchControls {
   private drawButton(b: Button): void {
     const pressed = b.pointerId !== null;
     const g = b.gfx.clear();
-    const s = b.size * (pressed ? 0.88 : 1);
-    const alpha = pressed ? 0.95 : 0.4;
-    const half = s / 2;
-    g.lineStyle(3 * this.k, PALETTE.shape, alpha);
-    g.fillStyle(PALETTE.shape, alpha);
-    switch (b.action) {
-      case 'attack':
-        if (pressed) g.fillTriangle(-half, half * 0.8, half, half * 0.8, 0, -half);
-        else g.strokeTriangle(-half, half * 0.8, half, half * 0.8, 0, -half);
-        break;
-      case 'guard':
-        if (pressed) g.fillRect(-half * 0.8, -half * 0.8, s * 0.8, s * 0.8);
-        else g.strokeRect(-half * 0.8, -half * 0.8, s * 0.8, s * 0.8);
-        break;
-      case 'jump':
-      case 'roll': {
-        g.lineStyle(4 * this.k, PALETTE.shape, alpha);
-        for (const o of [-half * 0.6, 0, half * 0.6]) {
-          if (b.action === 'jump') g.lineBetween(o, -half, o, half);
-          else g.lineBetween(-half, o, half, o);
-        }
-        break;
-      }
-      case 'pick':
-        // Target: two concentric circles; the inner one fills while pressed.
-        g.strokeCircle(0, 0, half);
-        if (pressed) g.fillCircle(0, 0, half * 0.45);
-        else g.strokeCircle(0, 0, half * 0.45);
-        break;
-    }
+    drawSymbol(g, b.action, b.size * (pressed ? 0.88 : 1), pressed, pressed ? 0.95 : 0.4, this.k);
   }
+
 
   /**
    * While a thumb is down: a horizontal line (the travel) and a short vertical tick (the thumb).

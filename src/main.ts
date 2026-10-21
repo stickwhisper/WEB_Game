@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { PALETTE, TUNING, VIEW_HEIGHT } from './config';
 import { BootScene } from './scenes/BootScene';
 import { GameScene } from './scenes/GameScene';
+import { SettingsScene } from './scenes/SettingsScene';
 import { UIScene } from './scenes/UIScene';
 import { run } from './run';
 import { telemetry } from './telemetry';
@@ -45,7 +46,7 @@ const game = new Phaser.Game({
   },
   input: { activePointers: 4 },
   render: { antialias: true, roundPixels: true },
-  scene: [BootScene, GameScene, UIScene],
+  scene: [BootScene, GameScene, UIScene, SettingsScene],
 });
 
 // Offline play for the home-screen app (production builds only; see public/sw.js).

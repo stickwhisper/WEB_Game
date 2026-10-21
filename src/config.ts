@@ -87,8 +87,9 @@ export const TUNING = {
 };
 
 /**
- * Keyboard bindings, as Phaser key names (see Phaser.Input.Keyboard.KeyCodes).
+ * Default keyboard bindings, as Phaser key names (see Phaser.Input.Keyboard.KeyCodes).
  * Several keys per action so both arrow-key and WASD players are covered.
+ * Players can change them in the settings screen (input/keyMap.ts remembers it).
  */
 export const KEY_BINDINGS = {
   left: ['LEFT', 'A'],
