@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { TUNING } from './config';
-import { BOSS, POOL, type RoomDef, TUTORIAL, mirrored } from './rooms';
+import { BOSS, POOL, PRACTICE, type RoomDef, TUTORIAL, mirrored } from './rooms';
 import type { ShieldDef } from './shields';
 
 /** Pool rooms walked in one run, after the tutorial (when it is still needed). */
@@ -36,6 +36,8 @@ class Run {
   rooms: RoomDef[] = [];
   index = 0;
   loadout: Loadout = freshLoadout();
+  /** The run set aside while in the practice room (restored on leaving it). */
+  private beforePractice?: { rooms: RoomDef[]; index: number; loadout: Loadout };
   readonly rnd = new Phaser.Math.RandomDataGenerator([String(Date.now())]);
 
   constructor() {
@@ -53,6 +55,7 @@ class Run {
   }
 
   reset(): void {
+    this.beforePractice = undefined;
     const drawn = this.rnd.shuffle([...POOL]).slice(0, ROOMS_PER_RUN).map((r) => (this.rnd.frac() < 0.5 ? mirrored(r) : r));
     this.rooms = [...(load(TAUGHT_KEY) ? [] : TUTORIAL), ...drawn, BOSS];
     this.index = 0;
@@ -63,13 +66,36 @@ class Run {
     return this.room === BOSS;
   }
 
-  /** Growth offers appear when a drawn room is cleared (not in the tutorial or the boss room). */
+  /** Growth offers appear when a drawn room is cleared (not in the tutorial, the boss room or practice). */
   get offersGrowth(): boolean {
-    return !TUTORIAL.includes(this.room) && this.room !== BOSS;
+    return !TUTORIAL.includes(this.room) && this.room !== BOSS && !this.inPractice;
+  }
+
+  get inPractice(): boolean {
+    return this.room === PRACTICE;
+  }
+
+  /**
+   * Step aside into the practice room with what is carried now (health full). Nothing done
+   * there carries back: leaving restores the run as it was, at the start of the same room.
+   */
+  enterPractice(current: Loadout): void {
+    if (this.inPractice) return;
+    this.beforePractice = { rooms: this.rooms, index: this.index, loadout: { ...current } };
+    this.rooms = [PRACTICE];
+    this.index = 0;
+    this.loadout = { ...current, hp: current.maxHp };
+  }
+
+  leavePractice(): void {
+    if (!this.beforePractice) return;
+    ({ rooms: this.rooms, index: this.index, loadout: this.loadout } = this.beforePractice);
+    this.beforePractice = undefined;
   }
 
   /** Leave the current room carrying `loadout`. A finished run starts over. */
   advance(loadout: Loadout): void {
+    if (this.inPractice) return this.leavePractice();
     if (this.room === TUTORIAL[TUTORIAL.length - 1]) store(TAUGHT_KEY, '1');
     this.loadout = { ...loadout };
     this.index++;

@@ -27,6 +27,8 @@ const BASH_MS = 260;
 const SPRINT = 1.6;
 /** Down + jump on a line platform: ignore line platforms for this long. */
 const DROP_MS = 260;
+/** Practice room: health fills up again this long after the last hit. */
+const PRACTICE_REFILL_MS = 2000;
 
 type State = 'normal' | 'attack' | 'charge' | 'guard' | 'bash' | 'roll' | 'hurt' | 'dead';
 
@@ -47,6 +49,9 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   /** Square upgrades: added to the shield's block, or widens a parry-only window. */
   guardBonus = 0;
   private shieldReadyAt = 0;
+  /** In the practice room health never drops below 1 and fills up again after a pause. */
+  practice = false;
+  private lastHurtAt = -Infinity;
   /**
    * Squash/stretch and flashes go on this image, never on the sprite itself:
    * scaling an Arcade sprite also resizes its body and would break collisions.
@@ -131,6 +136,10 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.stateMs += dt;
     if (onGround && this.mode !== 'dead') this.rememberSafeGround();
     this.watchGuardHold(now);
+    if (this.practice && this.hp < this.maxHp && now - this.lastHurtAt > PRACTICE_REFILL_MS) {
+      this.hp = this.maxHp;
+      this.scene.onPlayerHealed(this.hp);
+    }
 
     switch (this.mode) {
       case 'normal':
@@ -245,7 +254,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     }
 
     telemetry.damage(Math.min(damage, this.hp), 0); // circles actually lost
-    this.hp = Math.max(0, this.hp - damage);
+    this.hp = Math.max(this.practice ? 1 : 0, this.hp - damage);
+    this.lastHurtAt = now;
     this.lastHitBy = source;
     fx.bleed(damage, this.x, this.centerY);
     this.invulnUntil = now + P.invulnMs;
@@ -268,7 +278,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   fallBack(): void {
     if (this.mode === 'dead') return;
     telemetry.damage(Math.min(P.fallDamage, this.hp), 0);
-    this.hp = Math.max(0, this.hp - P.fallDamage);
+    this.hp = Math.max(this.practice ? 1 : 0, this.hp - P.fallDamage);
+    this.lastHurtAt = this.scene.time.now;
     this.lastHitBy = 'fall';
     this.scene.onPlayerHurt(this.hp);
     if (this.hp <= 0) {

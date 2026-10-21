@@ -12,6 +12,8 @@ const PIPS_PER_ROW = 12;
 /** Once half its circles are gone, a plated enemy (the boss) winds up this much faster. */
 const ENRAGED_WINDUP = 0.65;
 const GUARD_SIZE = 14;
+/** A practice sandbag refills this long after its last hit. */
+const SANDBAG_REFILL_MS = 1500;
 
 type State = 'patrol' | 'chase' | 'windup' | 'attack' | 'recover' | 'stun' | 'dead';
 
@@ -30,6 +32,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
   private mode: State = 'patrol';
   private stateMs = 0;
   private flashUntil = 0;
+  private lastHitAt = -Infinity;
   private attackSpent = false;
   private stunMs: number = E.stunMs;
   private lastTri?: Phaser.Geom.Triangle;
@@ -89,6 +92,9 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     if (this.mode === 'dead') return;
     this.stateMs += dt;
     const atk = this.atk;
+    // Sandbags take their circles back once left alone for a moment.
+    if (this.def.immortal && this.hp < this.def.maxHp && now - this.lastHitAt > SANDBAG_REFILL_MS) this.hp = this.def.maxHp;
+    if (this.def.drillEveryMs !== undefined && this.mode === 'patrol') this.enter('chase');
 
     const dx = player.x - this.x;
     const dy = player.y - this.y;
@@ -104,6 +110,14 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
       case 'chase':
         this.dir = dx >= 0 ? 1 : -1;
         this.body.setVelocityX(this.groundAhead() ? this.dir * this.def.chaseSpeed : 0);
+        // A drill sandbag ignores distance: it strikes the air on its own rhythm.
+        if (this.def.drillEveryMs !== undefined) {
+          if (this.stateMs >= this.def.drillEveryMs) {
+            this.atk = this.def.attack;
+            this.enter('windup');
+          }
+          break;
+        }
         if (!seesPlayer) this.enter('patrol');
         else if (Math.abs(dy) < this.def.body.height + 20 && this.body.blocked.down) {
           const next = this.chooseAttack(dx);
@@ -169,9 +183,14 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.hp -= dealt;
     this.scene.effects.bleed(dealt, this.x, this.centerY);
     this.flashUntil = this.scene.time.now + 80;
+    this.lastHitAt = this.scene.time.now;
     if (this.hp <= 0) {
-      this.die();
-      return;
+      // A sandbag never dies: emptied, it simply fills up again.
+      if (!this.def.immortal) {
+        this.die();
+        return;
+      }
+      this.hp = this.def.maxHp;
     }
     if (this.def.heavy) return; // unflinching: keeps its footing and its attack
     this.body.setVelocity(dir * knockback, -160);

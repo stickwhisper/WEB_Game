@@ -21,7 +21,7 @@ const ITEM_MARKERS: Record<string, Item> = {
   m: { kind: 'shield', shield: SHIELDS.medium },
   g: { kind: 'shield', shield: SHIELDS.large },
 };
-const ENEMY_MARKERS: Record<string, EnemyDef> = { E: ENEMIES.grunt, H: ENEMIES.hopper, W: ENEMIES.warden, B: ENEMIES.brute, S: ENEMIES.still, X: ENEMIES.core };
+const ENEMY_MARKERS: Record<string, EnemyDef> = { E: ENEMIES.grunt, H: ENEMIES.hopper, W: ENEMIES.warden, B: ENEMIES.brute, S: ENEMIES.still, X: ENEMIES.core, K: ENEMIES.bag, T: ENEMIES.drill, L: ENEMIES.blocker };
 
 /**
  * Level legend:
@@ -32,6 +32,7 @@ const ENEMY_MARKERS: Record<string, EnemyDef> = { E: ENEMIES.grunt, H: ENEMIES.h
  *   W  warden (rounded square)  B  brute (large flat ellipse)   (see enemies.ts)
  *   S  still (grunt form that never attacks; tutorial)
  *   X  core (the boss)
+ *   K  bag, T  drill, L  blocker (practice sandbags)
  *   D  exit square (bottom tile)
  *   s  spear, d  dagger, h  hammer, w  sword (weapon lying on the ground)
  *   b  small shield, m  medium shield, g  large shield

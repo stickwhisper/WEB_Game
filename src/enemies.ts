@@ -9,6 +9,10 @@ import type { TriangleShape } from './weapons';
  *   (still: a grunt's form that never moves or strikes; only used to teach the attack)
  *   huge ellipse        core    - the boss: wears square plates that break off, three attacks,
  *                                 quicker once half its circles are gone
+ * Practice sandbags (never die, circles refill):
+ *   bag      wide ellipse, only takes hits
+ *   drill    tall ellipse, swings into the air on a steady rhythm: practice guard and parry
+ *   blocker  rounded square, keeps its square up: practice getting behind it, or bashing
  * Every value is a small integer so it can be read as a count of shapes.
  */
 
@@ -66,6 +70,10 @@ export interface EnemyDef {
    * plates first, PLATE_HP points per plate, before any circle is lost.
    */
   plates?: number;
+  /** Practice sandbag: never dies; its circles come back once it hasn't been hit for a moment. Drops nothing. */
+  immortal?: boolean;
+  /** Practice: strikes in place on this rhythm (ms between attacks), facing the player, whether or not it can reach. */
+  drillEveryMs?: number;
 }
 
 /** Points one plate absorbs before it falls off. */
@@ -144,5 +152,42 @@ export const ENEMIES: Record<string, EnemyDef> = {
       { kind: 'lunge', damage: 2, range: 200, windupMs: 600, activeMs: 300, recoverMs: 600, speed: 460, hop: 0, weapon: { base: 48, length: 40, width: 22 } },
       { kind: 'lunge', damage: 2, range: 300, windupMs: 700, activeMs: 600, recoverMs: 700, speed: 340, hop: 620, weapon: { base: 40, length: 34, width: 26 } },
     ],
+  },
+  bag: {
+    id: 'bag',
+    body: { width: 48, height: 30 },
+    maxHp: 12,
+    patrolSpeed: 0,
+    chaseSpeed: 0,
+    guardPower: 0,
+    heavy: false,
+    drops: 0,
+    immortal: true,
+    attack: { kind: 'lunge', damage: 0, range: 0, windupMs: 500, activeMs: 220, recoverMs: 550, speed: 0, hop: 0, weapon: { base: 10, length: 26, width: 16 } },
+  },
+  drill: {
+    id: 'drill',
+    body: { width: 26, height: 44 },
+    maxHp: 12,
+    patrolSpeed: 0,
+    chaseSpeed: 0,
+    guardPower: 0,
+    heavy: true,
+    drops: 0,
+    immortal: true,
+    drillEveryMs: 1400,
+    attack: { kind: 'swing', damage: 2, range: 0, windupMs: 600, activeMs: 220, recoverMs: 400, fromDeg: -120, toDeg: 40, weapon: { base: 14, length: 48, width: 20 } },
+  },
+  blocker: {
+    id: 'blocker',
+    body: { width: 40, height: 40, radius: 13 },
+    maxHp: 12,
+    patrolSpeed: 0,
+    chaseSpeed: 0,
+    guardPower: 2,
+    heavy: false,
+    drops: 0,
+    immortal: true,
+    attack: { kind: 'lunge', damage: 0, range: 0, windupMs: 500, activeMs: 220, recoverMs: 550, speed: 0, hop: 0, weapon: { base: 10, length: 26, width: 16 } },
   },
 };

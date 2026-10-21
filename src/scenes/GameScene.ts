@@ -80,6 +80,7 @@ export class GameScene extends Phaser.Scene {
     // Health and the weapon in hand carry over from the previous room.
     this.player = new Player(this, this.level.playerSpawn.x, this.level.playerSpawn.y);
     this.player.applyLoadout(run.loadout);
+    this.player.practice = run.inPractice;
     for (const s of this.level.enemySpawns) this.enemies.push(new Enemy(this, s.x, s.y, s.enemy));
 
     // The exit is a square: leaving the room is leaving the health system.
@@ -89,6 +90,8 @@ export class GameScene extends Phaser.Scene {
       this.exits.push(exit);
       this.drawExit(exit);
     }
+    // The practice room's sandbags never fall, so its exit (back to the run) is open from the start.
+    if (run.inPractice) for (const e of this.exits) this.openExit(e);
 
     const bodies = [this.player, ...this.enemies];
     this.physics.add.collider(bodies, this.level.solids);
@@ -195,6 +198,15 @@ export class GameScene extends Phaser.Scene {
 
   onPlayerHealed(hp: number): void {
     this.game.events.emit(GameEvents.HP, hp, this.player.maxHp);
+  }
+
+  /** Into the practice room from the settings screen, or back out of it to the run. */
+  togglePractice(): void {
+    if (this.ending) return;
+    if (run.inPractice) run.leavePractice();
+    else run.enterPractice(this.player.loadout);
+    this.ending = true;
+    this.restartWithFade();
   }
 
   /** Freeze the physics world for a few ms on impact: the core of "hit feel". */

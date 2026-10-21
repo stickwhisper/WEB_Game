@@ -3,7 +3,7 @@ import { PALETTE, TUNING, uiScale } from '../config';
 import type { InputMode } from '../input/InputState';
 import { KeyboardControls } from '../input/KeyboardControls';
 import { TouchControls } from '../input/TouchControls';
-import { GameEvents } from './GameScene';
+import { GameEvents, type GameScene } from './GameScene';
 import { takeEsc } from './SettingsScene';
 
 const HP_RADIUS = 8;
@@ -94,11 +94,17 @@ export class UIScene extends Phaser.Scene {
     this.keyboard.releaseAll();
     if (this.scene.isActive('Game')) this.scene.pause('Game');
     this.scene.launch('Settings');
-    this.scene.get('Settings').events.once('done', () => {
+    const settings = this.scene.get('Settings');
+    let toPractice = false;
+    const onPractice = () => (toPractice = true);
+    settings.events.once('practice', onPractice);
+    settings.events.once('done', () => {
+      settings.events.off('practice', onPractice);
       this.settingsOpen = false;
       this.keyboard.enabled = true;
       this.touch.setEnabled(this.mode === 'touch');
       if (this.scene.isPaused('Game')) this.scene.resume('Game');
+      if (toPractice) (this.scene.get('Game') as GameScene).togglePractice();
     });
   }
 

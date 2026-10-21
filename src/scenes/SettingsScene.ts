@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { PALETTE } from '../config';
 import { BINDINGS, type Binding, keyMap } from '../input/keyMap';
 import { drawSymbol } from '../input/symbols';
+import { run } from '../run';
 
 /** One key on the drawn keyboard: its Phaser key name (or null for a gap) and width in key units. */
 type KeySpec = [name: string | null, width: number];
@@ -45,6 +46,7 @@ export class SettingsScene extends Phaser.Scene {
   private symbols: { binding: Binding; gfx: Phaser.GameObjects.Graphics; rect: Phaser.Geom.Rectangle }[] = [];
   private close!: Phaser.Geom.Rectangle;
   private reset!: Phaser.Geom.Rectangle;
+  private practice!: Phaser.Geom.Rectangle;
 
   constructor() {
     super('Settings');
@@ -82,6 +84,7 @@ export class SettingsScene extends Phaser.Scene {
 
     this.close = new Phaser.Geom.Rectangle(w - 64, 16, 48, 48);
     this.reset = new Phaser.Geom.Rectangle(w - 64, h - 64, 48, 48);
+    this.practice = new Phaser.Geom.Rectangle(w - 64, h / 2 - 24, 48, 48);
 
     this.input.on(Phaser.Input.Events.POINTER_DOWN, (p: Phaser.Input.Pointer) => this.onTap(p.x, p.y));
     this.input.keyboard?.on('keydown', (e: KeyboardEvent) => {
@@ -99,6 +102,11 @@ export class SettingsScene extends Phaser.Scene {
   private onTap(x: number, y: number): void {
     if (this.close.contains(x, y)) return this.finish();
     if (this.reset.contains(x, y)) return keyMap.reset();
+    if (this.practice.contains(x, y)) {
+      // Into the practice room (or, from inside it, back to the run).
+      this.events.emit('practice');
+      return this.finish();
+    }
     const sym = this.symbols.find((s) => s.rect.contains(x, y));
     if (sym) {
       this.selected = sym.binding;
@@ -129,6 +137,15 @@ export class SettingsScene extends Phaser.Scene {
       else if (owner) g.fillStyle(PALETTE.shape, 0.16).fillRectShape(k.rect);
       g.lineStyle(2, PALETTE.shape, mine.includes(k.code) ? 0.9 : 0.3).strokeRectShape(k.rect);
     }
+
+    // Practice: a sandbag on its post. Filled while in the practice room (tapping it then leaves).
+    const pr = this.practice;
+    const inside = run.inPractice;
+    g.lineStyle(3, PALETTE.shape, 0.6).fillStyle(PALETTE.shape, 0.8);
+    if (inside) g.fillEllipse(pr.centerX, pr.centerY - 6, 26, 16);
+    else g.strokeEllipse(pr.centerX, pr.centerY - 6, 26, 16);
+    g.lineBetween(pr.centerX, pr.centerY + 2, pr.centerX, pr.centerY + 16);
+    g.lineBetween(pr.centerX - 9, pr.centerY + 16, pr.centerX + 9, pr.centerY + 16);
 
     // Close: a cross. Reset: a circular arrow. Lines only, like every control.
     g.lineStyle(3, PALETTE.shape, 0.6);
