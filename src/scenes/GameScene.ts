@@ -8,6 +8,8 @@ import { Player } from '../objects/Player';
 import { HealthDrop } from '../objects/HealthDrop';
 import type { Item } from '../items';
 import { ItemPickup } from '../objects/ItemPickup';
+import { OfferPickup } from '../objects/OfferPickup';
+import { applyOffer, rollOffers } from '../offers';
 import { SHIELDS } from '../shields';
 import { run } from '../run';
 import { telemetry } from '../telemetry';
@@ -39,7 +41,8 @@ export class GameScene extends Phaser.Scene {
   private exits: Exit[] = [];
   private hitstopTimer?: Phaser.Time.TimerEvent;
   private ending = false;
-  private nearPickup?: ItemPickup;
+  private offers: OfferPickup[] = [];
+  private nearPickup?: ItemPickup | OfferPickup;
 
   constructor() {
     super('Game');
@@ -48,6 +51,7 @@ export class GameScene extends Phaser.Scene {
   create(): void {
     this.enemies = [];
     this.pickups = [];
+    this.offers = [];
     this.drops = [];
     this.exits = [];
     this.ending = false;
@@ -195,25 +199,63 @@ export class GameScene extends Phaser.Scene {
     this.drops = this.drops.filter((d) => !d.taken);
   }
 
-  /** Standing on a weapon or shield offers it; the pick input (target button / E) swaps it with the one carried. */
+  /**
+   * Standing on a weapon, shield or growth offer brightens it and shows the pick button;
+   * the pick input (target button / E) takes it. The nearest one wins when several overlap.
+   */
   private updatePickups(): void {
-    let near: ItemPickup | undefined;
-    for (const p of this.pickups) {
-      p.update();
-      if (!near && !this.player.isDead && p.touches(this.player.x, this.player.y)) near = p;
-    }
+    for (const p of this.pickups) p.update();
+    for (const o of this.offers) o.update();
+    const px = this.player.x;
+    const py = this.player.y;
+    const candidates = this.player.isDead ? [] : [...this.pickups, ...this.offers].filter((p) => p.touches(px, py));
+    const near = candidates.sort((a, b) => Math.abs(a.x - px) - Math.abs(b.x - px))[0];
     if (near !== this.nearPickup) {
       this.nearPickup?.setNear(false);
-      near?.setNear(true, this.player.attackBonus, this.player.guardBonus);
+      if (near instanceof ItemPickup) near.setNear(true, this.player.attackBonus, this.player.guardBonus);
+      else near?.setNear(true);
       this.nearPickup = near;
       this.game.events.emit(GameEvents.PICK_AVAILABLE, !!near);
     }
-    if (near && !this.player.isBusy && input.buffered('pick')) {
-      input.consume('pick');
+    if (!near || this.player.isBusy || !input.buffered('pick')) return;
+    input.consume('pick');
+    if (near instanceof ItemPickup) {
       telemetry.first('pick');
       near.swap(this.player.equip(near.item));
+      near.setNear(true, this.player.attackBonus, this.player.guardBonus);
+      return;
     }
+    this.takeOffer(near);
   }
+
+  /** Three offers float in a row on the ground in front of the exit, inside the room. */
+  private spawnOffers(exit: Exit): void {
+    const ground = exit.gfx.y + EXIT_SIZE / 2;
+    const inward = exit.gfx.x > this.level.widthPx / 2 ? -1 : 1;
+    const spots: number[] = [];
+    for (let d = 110; spots.length < 3 && d < 800; d += 20) {
+      const x = exit.gfx.x + inward * d;
+      // Solid ground under the whole footprint, and well apart from the previous offer.
+      if (!this.level.isGroundAt(x - 14, ground + 4) || !this.level.isGroundAt(x + 14, ground + 4)) continue;
+      if (spots.length && Math.abs(x - spots[spots.length - 1]) < 120) continue;
+      spots.push(x);
+    }
+    const offers = rollOffers(run.rnd, this.player.loadout);
+    spots.forEach((x, i) => this.offers.push(new OfferPickup(this, x, ground, offers[i])));
+  }
+
+  /** Apply the chosen offer at once; the others vanish. */
+  private takeOffer(o: OfferPickup): void {
+    telemetry.first('grow');
+    this.player.applyLoadout(applyOffer(this.player.loadout, o.offer));
+    this.game.events.emit(GameEvents.HP, this.player.hp, this.player.maxHp);
+    o.take(this.player.x, this.player.centerY);
+    for (const other of this.offers) if (other !== o) other.dismiss();
+    this.effects.tones.regain();
+    this.nearPickup = undefined;
+    this.game.events.emit(GameEvents.PICK_AVAILABLE, false);
+  }
+
 
   /** Filled like every world shape (outlines are reserved for controls): dim while shut, bright once open. */
   private drawExit(exit: Exit): void {
@@ -225,6 +267,7 @@ export class GameScene extends Phaser.Scene {
     if (exit.open) return;
     exit.open = true;
     this.effects.tones.exitOpens();
+    if (run.offersGrowth && !this.offers.length) this.spawnOffers(exit);
     this.drawExit(exit);
     exit.gfx.setScale(1.3);
     this.tweens.add({ targets: exit.gfx, scale: 1, duration: 400, ease: 'Back.easeOut' });

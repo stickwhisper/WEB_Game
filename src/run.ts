@@ -63,6 +63,11 @@ class Run {
     return this.room === BOSS;
   }
 
+  /** Growth offers appear when a drawn room is cleared (not in the tutorial or the boss room). */
+  get offersGrowth(): boolean {
+    return !TUTORIAL.includes(this.room) && this.room !== BOSS;
+  }
+
   /** Leave the current room carrying `loadout`. A finished run starts over. */
   advance(loadout: Loadout): void {
     if (this.room === TUTORIAL[TUTORIAL.length - 1]) store(TAUGHT_KEY, '1');
