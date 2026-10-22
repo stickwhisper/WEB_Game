@@ -33,6 +33,8 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
   private stateMs = 0;
   private flashUntil = 0;
   private lastHitAt = -Infinity;
+  /** Stunned by a parry or bash (as opposed to the short flinch of an ordinary hit). */
+  private staggered = false;
   private attackSpent = false;
   private stunMs: number = E.stunMs;
   private lastTri?: Phaser.Geom.Triangle;
@@ -151,6 +153,10 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     if (now < this.flashUntil) this.setTintFill(PALETTE.shape);
     else this.clearTint();
     this.setFlipX(this.dir < 0);
+    const dazed = this.staggered && this.mode === 'stun';
+    if (!dazed) this.staggered = false;
+    this.setAngle(dazed ? Math.sin(this.stateMs / 70) * 14 : 0);
+    this.setAlpha(dazed ? 0.55 : 1);
   }
 
   /**
@@ -194,6 +200,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     }
     if (this.def.heavy) return; // unflinching: keeps its footing and its attack
     this.body.setVelocity(dir * knockback, -160);
+    if (this.staggered) return; // already dazed: a hit doesn't cut the stagger short
     this.dir = dir > 0 ? -1 : 1; // turn to face the attacker
     this.stun(E.stunMs);
   }
@@ -237,7 +244,20 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
 
   private stun(ms: number): void {
     this.stunMs = ms;
+    this.staggered = false;
     this.enter('stun');
+  }
+
+  /**
+   * The reward for a parry or a bash: stunned for `ms`, even the heavy ones and the boss.
+   * While stunned it can't attack and its guard and plates are down, so every hit lands.
+   * It tilts back and forth and dims, so the state reads without words.
+   */
+  stagger(ms: number): void {
+    if (this.mode === 'dead') return;
+    this.stun(ms);
+    this.staggered = true;
+    this.body.setVelocityX(0);
   }
 
   private startAttack(player: Player): void {
@@ -284,7 +304,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     if (result === 'ignored') return; // rolled through: the attack carries on
     this.attackSpent = true;
     if (this.atk.kind === 'lunge') this.body.setVelocityX(0);
-    if (result === 'parried') this.stun(E.staggerMs);
+    if (result === 'parried') this.stagger(E.staggerMs);
   }
 
   private die(): void {

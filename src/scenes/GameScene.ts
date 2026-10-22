@@ -21,6 +21,8 @@ export const GameEvents = {
   PICK_AVAILABLE: 'pick-available',
   /** (exitsPassed: number) squares passed in this run so far. */
   PROGRESS: 'progress',
+  /** (attackBonus: number, guardBonus: number) the player's upgrades in this run. */
+  UPGRADES: 'upgrades',
 } as const;
 
 const EXIT_SIZE = 56;
@@ -109,6 +111,7 @@ export class GameScene extends Phaser.Scene {
     this.game.events.emit(GameEvents.HP, this.player.hp, this.player.maxHp);
     this.game.events.emit(GameEvents.PICK_AVAILABLE, false);
     this.game.events.emit(GameEvents.PROGRESS, run.exitsPassed);
+    this.game.events.emit(GameEvents.UPGRADES, this.player.attackBonus, this.player.guardBonus);
     telemetry.enterRoom(run.room.id, run.index);
   }
 
@@ -162,7 +165,7 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  /** Shield bash: 1 damage that ignores the enemy's guard (shield or plates), once per enemy per bash. */
+  /** Shield bash: 1 damage that ignores the enemy's guard (shield or plates) and staggers it; once per enemy per bash. */
   bashEnemies(rect: Phaser.Geom.Rectangle, dir: number, alreadyHit: Set<Enemy>): void {
     let hits = 0;
     for (const e of this.enemies) {
@@ -171,6 +174,7 @@ export class GameScene extends Phaser.Scene {
       if (!Phaser.Geom.Intersects.RectangleToRectangle(rect, new Phaser.Geom.Rectangle(b.x, b.y, b.width, b.height))) continue;
       alreadyHit.add(e);
       e.hit(1, dir, 320, true);
+      e.stagger(TUNING.enemy.bashStaggerMs);
       hits++;
     }
     if (hits > 0) {
@@ -243,8 +247,7 @@ export class GameScene extends Phaser.Scene {
     const near = candidates.sort((a, b) => Math.abs(a.x - px) - Math.abs(b.x - px))[0];
     if (near !== this.nearPickup) {
       this.nearPickup?.setNear(false);
-      if (near instanceof ItemPickup) near.setNear(true, this.player.attackBonus, this.player.guardBonus);
-      else near?.setNear(true);
+      near?.setNear(true);
       this.nearPickup = near;
       this.game.events.emit(GameEvents.PICK_AVAILABLE, !!near);
     }
@@ -253,7 +256,7 @@ export class GameScene extends Phaser.Scene {
     if (near instanceof ItemPickup) {
       telemetry.first('pick');
       near.swap(this.player.equip(near.item));
-      near.setNear(true, this.player.attackBonus, this.player.guardBonus);
+      near.setNear(true);
       return;
     }
     this.takeOffer(near);
@@ -280,6 +283,7 @@ export class GameScene extends Phaser.Scene {
     telemetry.first('grow');
     this.player.applyLoadout(applyOffer(this.player.loadout, o.offer));
     this.game.events.emit(GameEvents.HP, this.player.hp, this.player.maxHp);
+    this.game.events.emit(GameEvents.UPGRADES, this.player.attackBonus, this.player.guardBonus);
     o.take(this.player.x, this.player.centerY);
     for (const other of this.offers) if (other !== o) other.dismiss();
     this.effects.tones.regain();

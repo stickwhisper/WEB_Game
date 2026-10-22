@@ -20,8 +20,6 @@ const DASH_WINDOW_MS = 160;
 /** Attack still held this long when a swing ends starts charging; fully charged after CHARGE_FULL_MS. */
 const CHARGE_AFTER_MS = 280;
 const CHARGE_FULL_MS = 600;
-/** Guard held at least this long, then released: a shield bash. */
-const BASH_HOLD_MS = 450;
 const BASH_MS = 260;
 /** Roll held after the roll ends: run this much faster until it is let go. */
 const SPRINT = 1.6;
@@ -79,8 +77,10 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   private special?: Move;
   private rollEndedAt = -Infinity;
   private sprinting = false;
-  /** Game time the guard button was first seen held (-1 while it isn't). */
-  private guardHeldFrom = -1;
+  /** A hold-bash already fired for the current press of guard (cleared when it is let go). */
+  private bashLatched = false;
+  /** The shield dropped by itself (held past activeMs): it stays down until guard is let go. */
+  private guardSpent = false;
   private dropUntil = 0;
   private chargeFull = false;
   private readonly bashHit = new Set<Enemy>();
@@ -135,7 +135,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.wasOnGround = onGround;
     this.stateMs += dt;
     if (onGround && this.mode !== 'dead') this.rememberSafeGround();
-    this.watchGuardHold(now);
+    this.watchBashHold(now);
     if (this.practice && this.hp < this.maxHp && now - this.lastHurtAt > PRACTICE_REFILL_MS) {
       this.hp = this.maxHp;
       this.scene.onPlayerHealed(this.hp);
@@ -231,15 +231,17 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     const front = towardAttacker === this.facing;
     let blocked = 0;
     let parried = false;
-    if (this.mode === 'guard' && front) {
+    // A large shield's raise-bash already holds the square in front.
+    const raised = this.mode === 'guard' || (this.mode === 'bash' && this.shield.block > 0);
+    if (raised && front) {
       // Measured on the guard's own state timer: same clock as enemy wind-ups, even on slow frames.
       parried = this.stateMs <= parryMsOf(this.shield, this.guardBonus);
       blocked = parried ? damage : Math.min(damage, blockOf(this.shield, this.guardBonus));
-    } else if (this.mode !== 'guard' && !front && this.shield.guardsBack) {
+    } else if (!raised && !front && this.shield.guardsBack) {
       blocked = Math.min(damage, blockOf(this.shield, this.guardBonus));
     }
     if (blocked > 0) {
-      const side = this.mode === 'guard' ? this.facing : -this.facing;
+      const side = raised ? this.facing : -this.facing;
       fx.block(blocked, this.x + side * GUARD_GAP, this.centerY);
       this.pulseGuard();
       telemetry.first(parried ? 'parry' : 'block');
@@ -393,16 +395,17 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
   /**
    * small (tap): every press raises it for a moment, even while walking.
-   * medium (timed) / large (hold): raised while the button is held; medium drops it after activeMs.
-   * Each has a wait (cooldownMs) after lowering before it can be raised again.
+   * medium / large (timed): raised while the button is held, dropping by itself after activeMs.
+   * A large shield's raise opens with a bash. Each has a wait (cooldownMs) after lowering.
    */
   private tryRaiseShield(now: number): boolean {
-    if (now < this.shieldReadyAt) return false;
+    if (now < this.shieldReadyAt || this.bashLatched || this.guardSpent) return false;
     const pressed = input.buffered('guard');
     if (!(this.shield.use === 'tap' ? pressed : pressed || input.isHeld('guard'))) return false;
     input.consume('guard');
-    this.enter('guard');
     telemetry.first('guard');
+    if (this.shield.bash === 'raise') this.startBash(now);
+    else this.enter('guard');
     return true;
   }
 
@@ -425,24 +428,28 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         ? this.stateMs < Math.max(s.activeMs, parryMsOf(s, this.guardBonus))
         : input.isHeld('guard') && this.stateMs < s.activeMs;
     if (!up) {
+      // Held past its time: down, and it won't come back up until the button is let go.
+      if (s.use === 'timed' && input.isHeld('guard')) this.guardSpent = true;
       this.shieldReadyAt = now + s.cooldownMs;
       this.enter('normal');
     }
   }
 
-  /** Guard held long enough, then let go: bash with the shield. */
-  private watchGuardHold(now: number): void {
-    if (input.isHeld('guard')) {
-      if (this.guardHeldFrom < 0) this.guardHeldFrom = now;
+  /** A hold-bash shield (small) bashes the moment guard has been pressed long enough; once per press. */
+  private watchBashHold(now: number): void {
+    if (!input.isHeld('guard')) {
+      this.bashLatched = false;
+      this.guardSpent = false;
       return;
     }
-    if (this.guardHeldFrom < 0) return;
-    const held = now - this.guardHeldFrom;
-    this.guardHeldFrom = -1;
-    if (held >= BASH_HOLD_MS && (this.mode === 'normal' || this.mode === 'guard')) this.startBash(now);
+    if (this.shield.bash !== 'hold' || this.bashLatched) return;
+    if (input.heldMs('guard') < this.shield.bashHoldMs) return;
+    if (this.mode !== 'normal' && this.mode !== 'guard') return;
+    this.bashLatched = true;
+    this.startBash(now);
   }
 
-  /** A short shove with the square: 1 damage that ignores an enemy's guard, and knocks it back. */
+  /** A short shove with the square: 1 damage past an enemy's guard, and a stagger (see GameScene.bashEnemies). */
   private startBash(now: number): void {
     telemetry.first('bash');
     if (input.moveX !== 0) this.facing = input.moveX > 0 ? 1 : -1;
@@ -453,13 +460,17 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   }
 
   private updateBash(): void {
-    this.body.setVelocityX(this.stateMs < 120 ? this.facing * 320 : this.body.velocity.x * 0.8);
+    const push = this.shield.bashPush;
+    this.body.setVelocityX(this.stateMs < 120 ? this.facing * push : this.body.velocity.x * 0.8);
     if (this.stateMs < 180) {
       const size = this.shield.size + 14;
       const cx = this.x + this.facing * (GUARD_GAP + 6);
       this.scene.bashEnemies(new Phaser.Geom.Rectangle(cx - size / 2, this.centerY - size / 2, size, size), this.facing, this.bashHit);
     }
-    if (this.stateMs >= BASH_MS) this.enter('normal');
+    if (this.stateMs < BASH_MS) return;
+    // A raise-bash (large shield) settles into an ordinary guard if the button is still held.
+    if (this.shield.bash === 'raise' && input.isHeld('guard')) this.enter('guard');
+    else this.enter('normal');
   }
 
   private pulseGuard(): void {

@@ -33,6 +33,8 @@ export class UIScene extends Phaser.Scene {
   private settingsOpen = false;
   /** HUD scale for this screen (see uiScale). */
   private k = 1;
+  /** This run's attack and guard upgrades, under the icons at the top right. */
+  private upgrades!: Phaser.GameObjects.Graphics;
 
   constructor() {
     super('UI');
@@ -50,6 +52,7 @@ export class UIScene extends Phaser.Scene {
       this.fpsText = this.add.text(24 * k, 72 * k, '', { fontFamily: 'monospace', fontSize: '12px', color: '#5a5a5a' });
     }
     this.addSettingsButton(this.addFullscreenButton());
+    this.upgrades = this.add.graphics();
 
     // Registered before TouchControls so the touch that switches modes also counts as a press.
     this.input.on(Phaser.Input.Events.POINTER_DOWN, (p: Phaser.Input.Pointer) => {
@@ -68,7 +71,9 @@ export class UIScene extends Phaser.Scene {
     ev.on(GameEvents.HP, this.setHp, this);
     ev.on(GameEvents.PICK_AVAILABLE, onPick);
     ev.on(GameEvents.PROGRESS, this.setProgress, this);
+    ev.on(GameEvents.UPGRADES, this.setUpgrades, this);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      ev.off(GameEvents.UPGRADES, this.setUpgrades, this);
       ev.off(GameEvents.HP, this.setHp, this);
       ev.off(GameEvents.PICK_AVAILABLE, onPick);
       ev.off(GameEvents.PROGRESS, this.setProgress, this);
@@ -105,6 +110,35 @@ export class UIScene extends Phaser.Scene {
       this.touch.setEnabled(this.mode === 'touch');
       if (this.scene.isPaused('Game')) this.scene.resume('Game');
       if (toPractice) (this.scene.get('Game') as GameScene).togglePractice();
+    });
+  }
+
+  /**
+   * Upgrades of this run, right-aligned under the top-right icons: one triangle per point of
+   * attack, one square per point of guard. A negative upgrade shows as hollow shapes, like a
+   * loss in a growth offer. (Max health needs no mark: it is the length of the circle row.)
+   */
+  private setUpgrades(attack: number, guard: number): void {
+    const k = this.k;
+    const size = 10 * k;
+    const gap = 5 * k;
+    const right = this.scale.width - 22 * k;
+    const g = this.upgrades.clear();
+    [
+      [attack, 66],
+      [guard, 86],
+    ].forEach(([n, y], row) => {
+      for (let i = 0; i < Math.abs(n); i++) {
+        const cx = right - size / 2 - i * (size + gap);
+        const cy = y * k;
+        const h = size / 2;
+        g.fillStyle(PALETTE.shape, 0.85).lineStyle(2, PALETTE.shape, 0.85);
+        if (row === 0) {
+          if (n > 0) g.fillTriangle(cx - h, cy + h, cx + h, cy + h, cx, cy - h);
+          else g.strokeTriangle(cx - h, cy + h, cx + h, cy + h, cx, cy - h);
+        } else if (n > 0) g.fillRect(cx - h, cy - h, size, size);
+        else g.strokeRect(cx - h, cy - h, size, size);
+      }
     });
   }
 

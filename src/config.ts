@@ -72,7 +72,10 @@ export const TUNING = {
     aggroRangeX: 280,
     aggroRangeY: 90,
     stunMs: 280,
-    staggerMs: 900,
+    /** Stunned by a successful parry: guard, plates and attacks all down. */
+    staggerMs: 1200,
+    /** Stunned by a shield bash. */
+    bashStaggerMs: 900,
   },
 
   /** Circles an enemy leaves behind when it dies. */

@@ -48,12 +48,13 @@ export class ItemPickup {
 
   /**
    * Brighter while the player stands on it (the world-side half of the pick prompt),
-   * with its worth shown above, computed with the player's current upgrades.
+   * with its own worth shown above. Upgrades belong to the player, not the item, so
+   * they are not counted here (the HUD shows them).
    */
-  setNear(near: boolean, attackBonus = 0, guardBonus = 0): void {
+  setNear(near: boolean): void {
     this.gfx.setAlpha(near ? 1 : 0.55);
     this.stats.clear();
-    if (near) this.drawStats(attackBonus, guardBonus);
+    if (near) this.drawStats();
   }
 
   update(): void {
@@ -78,8 +79,8 @@ export class ItemPickup {
     }
   }
 
-  private drawStats(attackBonus: number, guardBonus: number): void {
-    const n = this.item.kind === 'weapon' ? Math.max(1, this.item.weapon.moves[0].damage + attackBonus) : blockOf(this.item.shield, guardBonus);
+  private drawStats(): void {
+    const n = this.item.kind === 'weapon' ? this.item.weapon.moves[0].damage : blockOf(this.item.shield, 0);
     const groups = n > 0 ? [n] : [];
     if (!groups.length) return;
     const widths = groups.map((n) => n * STAT_SIZE + (n - 1) * STAT_GAP);
