@@ -76,6 +76,8 @@ export const TUNING = {
     staggerMs: 1200,
     /** Stunned by a shield bash. */
     bashStaggerMs: 900,
+    /** A guarding enemy turns to a player behind it only after this long (not at once). */
+    guardTurnMs: 200,
   },
 
   /** Circles an enemy leaves behind when it dies. */

@@ -115,6 +115,10 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     return this.mode === 'dead';
   }
 
+  get isRolling(): boolean {
+    return this.mode === 'roll';
+  }
+
   get isBusy(): boolean {
     return this.mode !== 'normal';
   }

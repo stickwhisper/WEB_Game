@@ -35,6 +35,12 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
   private lastHitAt = -Infinity;
   /** Stunned by a parry or bash (as opposed to the short flinch of an ordinary hit). */
   private staggered = false;
+  /** How long the player has stood behind a guarding enemy (it turns after E.guardTurnMs). */
+  private behindMs = 0;
+  /** The player rolled through it: it doesn't know they are behind until struck. */
+  private lostPlayer = false;
+  /** Which side of it the player was on last frame. */
+  private playerSide: 1 | -1 = 1;
   private attackSpent = false;
   private stunMs: number = E.stunMs;
   private lastTri?: Phaser.Geom.Triangle;
@@ -101,6 +107,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     const dx = player.x - this.x;
     const dy = player.y - this.y;
     const seesPlayer = !player.isDead && Math.abs(dx) < E.aggroRangeX && Math.abs(dy) < E.aggroRangeY;
+    this.trackRollThrough(dx, player);
 
     switch (this.mode) {
       case 'patrol':
@@ -110,7 +117,13 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
         break;
 
       case 'chase':
-        this.dir = dx >= 0 ? 1 : -1;
+        if (this.lostPlayer) {
+          // Lost the player behind it: walks on as if on patrol until they show up in front.
+          if (this.body.blocked.left || this.body.blocked.right || !this.groundAhead()) this.dir = this.dir > 0 ? -1 : 1;
+          this.body.setVelocityX(this.dir * this.def.patrolSpeed);
+          break;
+        }
+        this.faceTowards(dx >= 0 ? 1 : -1, dt);
         this.body.setVelocityX(this.groundAhead() ? this.dir * this.def.chaseSpeed : 0);
         // A drill sandbag ignores distance: it strikes the air on its own rhythm.
         if (this.def.drillEveryMs !== undefined) {
@@ -122,7 +135,8 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
         }
         if (!seesPlayer) this.enter('patrol');
         else if (Math.abs(dy) < this.def.body.height + 20 && this.body.blocked.down) {
-          const next = this.chooseAttack(dx);
+          // Only at a player it faces: one behind it gets the turn delay first.
+          const next = (dx >= 0 ? 1 : -1) === this.dir ? this.chooseAttack(dx) : undefined;
           if (next) {
             this.atk = next;
             this.enter('windup');
@@ -167,6 +181,8 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
   hit(damage: number, dir: number, knockback: number, ignoreGuard = false): void {
     if (this.mode === 'dead') return;
 
+    this.lostPlayer = false;
+    this.behindMs = 0;
     const fromFront = dir === -this.dir && !ignoreGuard;
     if (this.guarding && fromFront && this.plates > 0) {
       damage = this.breakPlates(damage);
@@ -319,6 +335,40 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
       ease: 'Quad.easeIn',
       onComplete: () => this.destroy(),
     });
+  }
+
+  /** Carries a front square (warden, blocker); the boss's plates don't count. */
+  private get shieldBearer(): boolean {
+    return this.def.guardPower > 0;
+  }
+
+  /**
+   * Turn to the player's side. An enemy with a shield turns only once the player has stayed
+   * behind it for E.guardTurnMs, so getting behind it opens a short window.
+   */
+  private faceTowards(side: 1 | -1, dt: number): void {
+    if (side === this.dir || !this.shieldBearer) {
+      this.behindMs = 0;
+      this.dir = side;
+      return;
+    }
+    this.behindMs += dt;
+    if (this.behindMs >= E.guardTurnMs) {
+      this.behindMs = 0;
+      this.dir = side;
+    }
+  }
+
+  /**
+   * A shield-bearing enemy that the player rolls straight through loses track of them: it keeps its
+   * back to them until struck. It finds them again once they are back in front of it.
+   */
+  private trackRollThrough(dx: number, player: Player): void {
+    const side: 1 | -1 = dx >= 0 ? 1 : -1;
+    const crossed = side !== this.playerSide && Math.abs(dx) < this.def.body.width;
+    if (this.shieldBearer && crossed && player.isRolling && side !== this.dir && this.mode !== 'stun') this.lostPlayer = true;
+    if (side === this.dir || player.isDead) this.lostPlayer = false;
+    this.playerSide = side;
   }
 
   private enter(state: State): void {
